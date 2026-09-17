@@ -1,0 +1,49 @@
+[
+  {
+    "id": "6afb4d86-b550-484c-9ba4-0bbf1f2d3ac7",
+    "name": "Plano Presença",
+    "slug": "presenca",
+    "price_monthly": 49.9,
+    "features": [
+      "Perfil completo no portal",
+      "Botão direto para WhatsApp",
+      "Localização no Google Maps",
+      "1 Cupom de desconto ativo",
+      "Relatório mensal de acessos"
+    ],
+    "is_popular": false,
+    "order_index": 1
+  },
+  {
+    "id": "aefc6f64-ff4a-406f-b56c-cd214008e88b",
+    "name": "Plano Destaque VIP",
+    "slug": "destaque-vip",
+    "price_monthly": 99.9,
+    "features": [
+      "Tudo do Plano Presença",
+      "Selo oficial de Empresa Verificada",
+      "Prioridade no topo da categoria",
+      "Até 3 Cupons promocionais ativos",
+      "Painel de métricas e cliques em tempo real",
+      "Suporte prioritário"
+    ],
+    "is_popular": true,
+    "order_index": 2
+  },
+  {
+    "id": "b7298fe8-228b-4809-b0e9-cf0a340ad301",
+    "name": "Plano Master Franquia",
+    "slug": "master",
+    "price_monthly": 199.9,
+    "features": [
+      "Tudo do Plano VIP",
+      "Card em Destaque na Home principal",
+      "Banner rotativo de patrocinador na sidebar",
+      "Cupons ilimitados",
+      "Cobertura de eventos e menção nas redes",
+      "Relatórios completos de conversão"
+    ],
+    "is_popular": false,
+    "order_index": 3
+  }
+]

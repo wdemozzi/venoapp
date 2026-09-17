@@ -69,6 +69,7 @@ import {
   AdminSession,
   authenticateAdmin,
   updateBusinessAccessCredentials,
+  updateBusinessSubscription,
 } from '@/lib/supabase';
 import defaultBannersData from '@/data/banners.json';
 
@@ -247,6 +248,50 @@ export default function AdminPage() {
   const [subPlanFilter, setSubPlanFilter] = useState('all');
   const [subStatusFilter, setSubStatusFilter] = useState('all');
 
+  // Commercial Plans Modal State
+  const [planModal, setPlanModal] = useState<{
+    open: boolean;
+    plan: Partial<Plan> | null;
+    featuresText: string;
+    submitting: boolean;
+  }>({
+    open: false,
+    plan: null,
+    featuresText: '',
+    submitting: false,
+  });
+
+  // Commercial Subscribers Modal State
+  const [subscriberModal, setSubscriberModal] = useState<{
+    open: boolean;
+    businessId: string;
+    businessName: string;
+    planId: string;
+    status: string;
+    price: string;
+    expiresAt: string;
+    contactName: string;
+    whatsapp: string;
+    notes: string;
+    isVerified: boolean;
+    isFeatured: boolean;
+    submitting: boolean;
+  }>({
+    open: false,
+    businessId: '',
+    businessName: '',
+    planId: '',
+    status: 'active',
+    price: '',
+    expiresAt: '',
+    contactName: '',
+    whatsapp: '',
+    notes: '',
+    isVerified: false,
+    isFeatured: false,
+    submitting: false,
+  });
+
   const [franchiseModal, setFranchiseModal] = useState({
     open: false,
     city: {
@@ -419,7 +464,14 @@ export default function AdminPage() {
       else setShortcuts([]);
       if (albumsData) setAlbums(albumsData);
       else setAlbums([]);
-      if (plansRes.data && plansRes.data.length > 0) setPlans(plansRes.data);
+      fetch('/api/plans')
+        .then((r) => r.json())
+        .then((pData) => {
+          if (Array.isArray(pData) && pData.length > 0) setPlans(pData);
+        })
+        .catch(() => {
+          if (plansRes.data && plansRes.data.length > 0) setPlans(plansRes.data);
+        });
       if (offersData) setOffers(offersData);
       else setOffers([]);
 
@@ -715,6 +767,210 @@ export default function AdminPage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro ao atualizar plano';
       showToast(msg, 'error');
+    }
+  };
+
+  // ==========================================
+  // PLANS MANAGEMENT CRUD
+  // ==========================================
+  const handleNewPlan = () => {
+    setPlanModal({
+      open: true,
+      plan: {
+        id: '',
+        name: '',
+        slug: '',
+        price_monthly: 49.9,
+        is_popular: false,
+        order_index: plans.length + 1,
+      },
+      featuresText: 'Perfil completo no portal\nBotão direto para WhatsApp\nLocalização no Google Maps',
+      submitting: false,
+    });
+  };
+
+  const handleEditPlan = (plan: Plan) => {
+    setPlanModal({
+      open: true,
+      plan: { ...plan },
+      featuresText: (plan.features || []).join('\n'),
+      submitting: false,
+    });
+  };
+
+  const handleSavePlan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!planModal.plan || !planModal.plan.name) {
+      showToast('Informe o nome do plano.', 'error');
+      return;
+    }
+    setPlanModal((prev) => ({ ...prev, submitting: true }));
+    try {
+      const features = planModal.featuresText
+        .split('\n')
+        .map((f) => f.trim())
+        .filter(Boolean);
+
+      const payload = {
+        id: planModal.plan.id || undefined,
+        name: planModal.plan.name.trim(),
+        slug: planModal.plan.slug || planModal.plan.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+        price_monthly: Number(planModal.plan.price_monthly || 0),
+        order_index: Number(planModal.plan.order_index || plans.length + 1),
+        is_popular: Boolean(planModal.plan.is_popular),
+        features,
+      };
+
+      const res = await fetch('/api/plans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || 'Erro ao salvar plano.');
+
+      if (data.plans && Array.isArray(data.plans)) {
+        setPlans(data.plans);
+      } else if (data.plan) {
+        setPlans((prev) => {
+          const idx = prev.findIndex((p) => p.id === data.plan.id);
+          if (idx >= 0) {
+            const copy = [...prev];
+            copy[idx] = data.plan;
+            return copy;
+          }
+          return [...prev, data.plan];
+        });
+      }
+
+      showToast(`Plano "${payload.name}" salvo com sucesso!`);
+      setPlanModal({ open: false, plan: null, featuresText: '', submitting: false });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao salvar plano comercial.';
+      showToast(msg, 'error');
+    } finally {
+      setPlanModal((prev) => ({ ...prev, submitting: false }));
+    }
+  };
+
+  const handleDeletePlan = async (planId: string) => {
+    if (!confirm('Deseja realmente excluir este plano comercial?')) return;
+    try {
+      const res = await fetch('/api/plans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', id: planId }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || 'Erro ao excluir plano.');
+      if (data.plans) setPlans(data.plans);
+      else setPlans((prev) => prev.filter((p) => p.id !== planId));
+      showToast('Plano comercial excluído com sucesso!');
+      setPlanModal({ open: false, plan: null, featuresText: '', submitting: false });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao excluir plano.';
+      showToast(msg, 'error');
+    }
+  };
+
+  // ==========================================
+  // SUBSCRIBERS MANAGEMENT CRUD
+  // ==========================================
+  const handleOpenSubscriberModal = (bus: SupabaseBusiness) => {
+    const currentPlan = plans.find((p) => p.id === bus.plan_id);
+    const priceVal = bus.subscription_price !== undefined && bus.subscription_price !== null
+      ? String(bus.subscription_price)
+      : (currentPlan ? String(currentPlan.price_monthly) : '49.90');
+
+    setSubscriberModal({
+      open: true,
+      businessId: bus.id,
+      businessName: bus.name,
+      planId: bus.plan_id || '',
+      status: bus.subscription_status || 'active',
+      price: priceVal,
+      expiresAt: bus.subscription_expires_at || '',
+      contactName: bus.contact_name || '',
+      whatsapp: bus.whatsapp || bus.phone || '',
+      notes: bus.subscription_notes || '',
+      isVerified: Boolean(bus.is_verified),
+      isFeatured: Boolean(bus.is_featured),
+      submitting: false,
+    });
+  };
+
+  const handleNewSubscriber = () => {
+    const firstBus = businesses[0];
+    const defaultPlan = plans[0];
+    setSubscriberModal({
+      open: true,
+      businessId: firstBus ? firstBus.id : '',
+      businessName: firstBus ? firstBus.name : '',
+      planId: defaultPlan ? defaultPlan.id : '',
+      status: 'active',
+      price: defaultPlan ? String(defaultPlan.price_monthly) : '49.90',
+      expiresAt: new Date(Date.now() + 86400000 * 30).toISOString().slice(0, 10),
+      contactName: '',
+      whatsapp: firstBus ? (firstBus.whatsapp || '') : '',
+      notes: '',
+      isVerified: true,
+      isFeatured: false,
+      submitting: false,
+    });
+  };
+
+  const handleSaveSubscriber = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!subscriberModal.businessId) {
+      showToast('Selecione uma empresa assinante.', 'error');
+      return;
+    }
+    setSubscriberModal((prev) => ({ ...prev, submitting: true }));
+    try {
+      const parsedPrice = subscriberModal.price ? parseFloat(subscriberModal.price.replace(',', '.')) : null;
+
+      const success = await updateBusinessSubscription(subscriberModal.businessId, {
+        plan_id: subscriberModal.planId || null,
+        subscription_status: subscriberModal.status,
+        subscription_price: parsedPrice,
+        subscription_expires_at: subscriberModal.expiresAt || null,
+        subscription_notes: subscriberModal.notes || null,
+        contact_name: subscriberModal.contactName || null,
+        whatsapp: subscriberModal.whatsapp || null,
+        is_verified: subscriberModal.isVerified,
+        is_featured: subscriberModal.isFeatured,
+      });
+
+      if (!success) throw new Error('Falha ao atualizar dados de assinatura.');
+
+      // Update local state
+      setBusinesses((prev) =>
+        prev.map((b) => {
+          if (b.id !== subscriberModal.businessId) return b;
+          return {
+            ...b,
+            plan_id: subscriberModal.planId || null,
+            subscription_status: subscriberModal.status,
+            subscription_price: parsedPrice,
+            subscription_expires_at: subscriberModal.expiresAt || null,
+            subscription_notes: subscriberModal.notes || null,
+            contact_name: subscriberModal.contactName || null,
+            whatsapp: subscriberModal.whatsapp || b.whatsapp,
+            is_verified: subscriberModal.isVerified,
+            is_featured: subscriberModal.isFeatured,
+          };
+        })
+      );
+
+      showToast('Assinatura comercial atualizada com sucesso!');
+      setSubscriberModal((prev) => ({ ...prev, open: false }));
+      refreshData();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao salvar assinatura comercial';
+      showToast(msg, 'error');
+    } finally {
+      setSubscriberModal((prev) => ({ ...prev, submitting: false }));
     }
   };
 
@@ -2881,39 +3137,97 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                {/* Plan Distribution Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {plans.map((p) => {
-                    const countInPlan = businesses.filter((b) => b.plan_id === p.id).length;
-                    return (
-                      <div
-                        key={p.id}
-                        className={`bg-[#140426] border rounded-2xl p-4 flex items-center justify-between gap-4 ${
-                          p.is_popular
-                            ? 'border-purple-600/70 shadow-md shadow-purple-950/40'
-                            : 'border-purple-900/40'
-                        }`}
-                      >
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-bold text-white text-sm">{p.name}</h4>
-                            {p.is_popular && (
-                              <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 py-0.5 rounded font-bold uppercase">
-                                VIP
-                              </span>
+                {/* Commercial Plans Header & Cards */}
+                <div className="space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+                    <div>
+                      <h3 className="font-bold text-white text-base flex items-center gap-2">
+                        <CreditCard className="w-4 h-4 text-purple-400" />
+                        <span>Planos Comerciais de Publicidade</span>
+                      </h3>
+                      <p className="text-xs text-purple-300/70">
+                        Configure os pacotes comerciais oferecidos aos estabelecimentos da sua rede de franquias.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleNewPlan}
+                      className="flex items-center gap-1.5 text-xs bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-2 rounded-xl transition shadow-md shadow-purple-950/40 cursor-pointer self-start sm:self-auto"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Novo Plano Comercial</span>
+                    </button>
+                  </div>
+
+                  {/* Plan Distribution Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {plans.map((p) => {
+                      const countInPlan = businesses.filter((b) => b.plan_id === p.id).length;
+                      return (
+                        <div
+                          key={p.id}
+                          className={`bg-[#140426] border rounded-2xl p-4 flex flex-col justify-between gap-3 hover:border-purple-500/60 transition ${
+                            p.is_popular
+                              ? 'border-purple-600/70 shadow-md shadow-purple-950/40'
+                              : 'border-purple-900/40'
+                          }`}
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <h4 className="font-bold text-white text-sm sm:text-base">{p.name}</h4>
+                                  {p.is_popular && (
+                                    <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 py-0.5 rounded font-bold uppercase">
+                                      VIP
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-sm font-black text-emerald-400 mt-0.5">
+                                  R$ {Number(p.price_monthly || 0).toFixed(2).replace('.', ',')}{' '}
+                                  <span className="text-[10px] text-purple-300/70 font-normal">/ mês</span>
+                                </p>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <span className="text-xl font-black text-white">{countInPlan}</span>
+                                <span className="text-[10px] text-purple-300/70 block">empresas</span>
+                              </div>
+                            </div>
+
+                            {p.features && p.features.length > 0 && (
+                              <div className="text-[11px] text-purple-300/80 space-y-1 border-t border-purple-900/30 pt-2.5">
+                                {p.features.slice(0, 4).map((f, i) => (
+                                  <div key={i} className="flex items-center gap-1.5 truncate">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                                    <span className="truncate">{f}</span>
+                                  </div>
+                                ))}
+                                {p.features.length > 4 && (
+                                  <div className="text-[10px] text-purple-400 font-semibold pl-4.5">
+                                    +{p.features.length - 4} outros benefícios
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
-                          <p className="text-xs text-purple-300/70">
-                            R$ {p.price_monthly.toFixed(2).replace('.', ',')} / mês
-                          </p>
+
+                          <div className="pt-3 border-t border-purple-900/40 flex items-center justify-between gap-2">
+                            <span className="text-[10px] font-mono text-purple-400/60 uppercase">
+                              Slug: {p.slug}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleEditPlan(p)}
+                              className="flex items-center gap-1.5 text-xs bg-purple-900/60 hover:bg-purple-800 text-purple-200 hover:text-white px-3 py-1.5 rounded-lg border border-purple-700/50 transition cursor-pointer font-bold"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                              <span>Editar Plano</span>
+                            </button>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <span className="text-xl font-black text-white">{countInPlan}</span>
-                          <span className="text-[10px] text-purple-300/70 block">empresas</span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
 
                 {/* Filters & Search */}
@@ -2964,10 +3278,23 @@ export default function AdminPage() {
 
                 {/* Subscribers Table */}
                 <div className="bg-[#1b0730] border border-[#301254] rounded-2xl overflow-hidden shadow-sm">
-                  <div className="p-4 border-b border-purple-900/40 flex items-center justify-between">
-                    <h3 className="font-bold text-white text-sm">
-                      Lista de Empresas Assinantes ({filteredSubs.length})
-                    </h3>
+                  <div className="p-4 border-b border-purple-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h3 className="font-bold text-white text-sm sm:text-base">
+                        Lista de Empresas Assinantes ({filteredSubs.length})
+                      </h3>
+                      <p className="text-[11px] text-purple-300/70">
+                        Gerencie contratos, valores personalizados, vencimentos e contatos comerciais.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleNewSubscriber}
+                      className="flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3.5 py-2 rounded-xl transition shadow-md shadow-emerald-950/40 cursor-pointer self-start sm:self-auto"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Nova Assinatura Comercial</span>
+                    </button>
                   </div>
 
                   {filteredSubs.length === 0 ? (
@@ -2990,13 +3317,19 @@ export default function AdminPage() {
                           {filteredSubs.map((bus) => {
                             const currentPlan = plans.find((p) => p.id === bus.plan_id);
                             const status = bus.subscription_status || 'trial';
+                            const effectivePrice = bus.subscription_price !== undefined && bus.subscription_price !== null
+                              ? Number(bus.subscription_price)
+                              : (currentPlan ? currentPlan.price_monthly : null);
 
                             return (
                               <tr key={bus.id} className="hover:bg-purple-950/30 transition">
                                 <td className="p-3.5">
                                   <div className="font-bold text-white text-sm">{bus.name}</div>
-                                  <div className="text-[11px] text-purple-300/70 flex items-center gap-1.5 mt-0.5">
+                                  <div className="text-[11px] text-purple-300/70 flex items-center gap-1.5 mt-0.5 flex-wrap">
                                     <span>{bus.category || 'Comércio'}</span>
+                                    {bus.contact_name && (
+                                      <span className="text-purple-400">• Resp: {bus.contact_name}</span>
+                                    )}
                                     {bus.is_verified && (
                                       <span className="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-800/40 px-1 rounded font-bold">
                                         VERIFICADO
@@ -3029,49 +3362,71 @@ export default function AdminPage() {
                                 </td>
 
                                 <td className="p-3.5">
-                                  <select
-                                    value={bus.plan_id || ''}
-                                    onChange={(e) => handleUpdateSubscriptionPlan(bus.id, e.target.value)}
-                                    className="bg-[#200839] border border-purple-800/50 rounded-lg px-2.5 py-1 text-xs text-white font-semibold focus:outline-none focus:border-purple-400 cursor-pointer"
-                                  >
-                                    <option value="">Sem Plano</option>
-                                    {plans.map((p) => (
-                                      <option key={p.id} value={p.id}>
-                                        {p.name} - R$ {p.price_monthly.toFixed(2).replace('.', ',')}
-                                      </option>
-                                    ))}
-                                  </select>
+                                  <div className="space-y-1">
+                                    <select
+                                      value={bus.plan_id || ''}
+                                      onChange={(e) => handleUpdateSubscriptionPlan(bus.id, e.target.value)}
+                                      className="bg-[#200839] border border-purple-800/50 rounded-lg px-2.5 py-1 text-xs text-white font-semibold focus:outline-none focus:border-purple-400 cursor-pointer"
+                                    >
+                                      <option value="">Sem Plano</option>
+                                      {plans.map((p) => (
+                                        <option key={p.id} value={p.id}>
+                                          {p.name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <div className="text-[11px] font-bold text-emerald-400">
+                                      {effectivePrice !== null
+                                        ? `R$ ${effectivePrice.toFixed(2).replace('.', ',')} / mês`
+                                        : 'Sob consulta'}
+                                    </div>
+                                  </div>
                                 </td>
 
                                 <td className="p-3.5">
-                                  <select
-                                    value={status}
-                                    onChange={(e) => handleUpdateSubscriptionStatus(bus.id, e.target.value)}
-                                    className={`border rounded-lg px-2.5 py-1 text-xs font-bold focus:outline-none cursor-pointer ${
-                                      status === 'active'
-                                        ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700/60'
-                                        : status === 'trial'
-                                        ? 'bg-amber-950/80 text-amber-300 border-amber-700/60'
-                                        : status === 'pending'
-                                        ? 'bg-yellow-950/80 text-yellow-300 border-yellow-700/60'
-                                        : 'bg-zinc-900 text-zinc-400 border-zinc-700'
-                                    }`}
-                                  >
-                                    <option value="active">🟢 Ativo (Pago)</option>
-                                    <option value="trial">🟡 Teste Grátis (Trial)</option>
-                                    <option value="pending">🟠 Aguardando Pagamento</option>
-                                    <option value="canceled">🔴 Cancelado</option>
-                                  </select>
+                                  <div className="space-y-1">
+                                    <select
+                                      value={status}
+                                      onChange={(e) => handleUpdateSubscriptionStatus(bus.id, e.target.value)}
+                                      className={`border rounded-lg px-2.5 py-1 text-xs font-bold focus:outline-none cursor-pointer ${
+                                        status === 'active'
+                                          ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700/60'
+                                          : status === 'trial'
+                                          ? 'bg-amber-950/80 text-amber-300 border-amber-700/60'
+                                          : status === 'pending'
+                                          ? 'bg-yellow-950/80 text-yellow-300 border-yellow-700/60'
+                                          : 'bg-zinc-900 text-zinc-400 border-zinc-700'
+                                      }`}
+                                    >
+                                      <option value="active">🟢 Ativo (Pago)</option>
+                                      <option value="trial">🟡 Teste Grátis (Trial)</option>
+                                      <option value="pending">🟠 Aguardando Pagamento</option>
+                                      <option value="canceled">🔴 Cancelado</option>
+                                    </select>
+                                    {bus.subscription_expires_at && (
+                                      <div className="text-[10px] text-purple-300/70">
+                                        Vence: {bus.subscription_expires_at}
+                                      </div>
+                                    )}
+                                  </div>
                                 </td>
 
                                 <td className="p-3.5 text-right">
                                   <div className="flex items-center justify-end gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenSubscriberModal(bus)}
+                                      className="px-2.5 py-1.5 rounded-lg bg-purple-900/60 hover:bg-purple-800 text-purple-200 hover:text-white border border-purple-700/50 transition cursor-pointer flex items-center gap-1.5 text-xs font-bold"
+                                      title="Editar Assinatura e Dados Comerciais"
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                      <span>Editar</span>
+                                    </button>
+
                                     {bus.whatsapp && (
                                       <a
                                         href={`https://wa.me/55${bus.whatsapp.replace(/\D/g, '')}?text=${encodeURIComponent(
-                                          `Olá! Notamos seu cadastro no plano ${
-                                            currentPlan ? currentPlan.name : 'Venoapp'
-                                          }. Segue a confirmação da sua ativação comercial no portal!`
+                                          `Olá! Falamos da franquia Venoapp sobre o plano da empresa ${bus.name}.`
                                         )}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
@@ -4796,6 +5151,373 @@ export default function AdminPage() {
                 >
                   <Save className="w-4 h-4" />
                   <span>{userAccessModal.saving ? 'Salvando...' : 'Salvar Acesso'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL: EDITAR / CRIAR PLANO COMERCIAL */}
+      {/* ======================================================== */}
+      {planModal.open && planModal.plan && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#1b0730] border border-purple-700/60 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between gap-3 border-b border-purple-900/50 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-md">
+                  <CreditCard className="w-5 h-5 text-emerald-300" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">
+                    {planModal.plan.id ? 'Editar Plano Comercial' : 'Novo Plano Comercial'}
+                  </h3>
+                  <p className="text-xs text-purple-300/80">
+                    Defina nome, preço mensal e lista de benefícios do pacote.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPlanModal({ open: false, plan: null, featuresText: '', submitting: false })}
+                className="p-1.5 rounded-lg text-purple-400 hover:text-white hover:bg-purple-900/50 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePlan} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-purple-200 mb-1">
+                    Nome do Plano *
+                  </label>
+                  <input
+                    type="text"
+                    value={planModal.plan.name || ''}
+                    onChange={(e) => setPlanModal((prev) => ({ ...prev, plan: { ...prev.plan, name: e.target.value } }))}
+                    required
+                    placeholder="Ex: Plano Destaque VIP"
+                    className="w-full bg-[#200839] border border-purple-900/60 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-purple-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-purple-200 mb-1">
+                    Slug / Identificador
+                  </label>
+                  <input
+                    type="text"
+                    value={planModal.plan.slug || ''}
+                    onChange={(e) => setPlanModal((prev) => ({ ...prev, plan: { ...prev.plan, slug: e.target.value } }))}
+                    placeholder="Ex: destaque-vip"
+                    className="w-full bg-[#200839] border border-purple-900/60 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-purple-400"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-purple-200 mb-1">
+                    Preço Mensal (R$) *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.10"
+                    value={planModal.plan.price_monthly !== undefined ? planModal.plan.price_monthly : ''}
+                    onChange={(e) => setPlanModal((prev) => ({ ...prev, plan: { ...prev.plan, price_monthly: parseFloat(e.target.value) } }))}
+                    required
+                    placeholder="99.90"
+                    className="w-full bg-[#200839] border border-purple-900/60 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-purple-400 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-purple-200 mb-1">
+                    Ordem de Exibição
+                  </label>
+                  <input
+                    type="number"
+                    value={planModal.plan.order_index || 1}
+                    onChange={(e) => setPlanModal((prev) => ({ ...prev, plan: { ...prev.plan, order_index: parseInt(e.target.value) || 1 } }))}
+                    className="w-full bg-[#200839] border border-purple-900/60 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-purple-400"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 text-xs text-purple-200 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(planModal.plan.is_popular)}
+                    onChange={(e) => setPlanModal((prev) => ({ ...prev, plan: { ...prev.plan, is_popular: e.target.checked } }))}
+                    className="w-4 h-4 rounded border-purple-700 bg-purple-950/60 text-purple-600 focus:ring-purple-500"
+                  />
+                  <span>Destacar como Mais Popular (Badge VIP)</span>
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-purple-200 mb-1">
+                  Benefícios / Features (um por linha)
+                </label>
+                <textarea
+                  rows={4}
+                  value={planModal.featuresText}
+                  onChange={(e) => setPlanModal((prev) => ({ ...prev, featuresText: e.target.value }))}
+                  placeholder="Perfil completo no portal&#10;Botão direto para WhatsApp&#10;Selo oficial de Empresa Verificada"
+                  className="w-full bg-[#200839] border border-purple-900/60 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-purple-400 leading-relaxed font-mono"
+                />
+                <span className="text-[10px] text-purple-400/70 mt-1 block">
+                  Estes itens são exibidos na vitrine de planos em /anunciar e no perfil das empresas.
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between pt-3 border-t border-purple-900/40">
+                {planModal.plan.id ? (
+                  <button
+                    type="button"
+                    onClick={() => handleDeletePlan(planModal.plan!.id!)}
+                    className="px-3 py-2 rounded-xl text-xs font-semibold text-rose-400 hover:text-rose-200 hover:bg-rose-950/50 transition cursor-pointer flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Excluir</span>
+                  </button>
+                ) : <div />}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPlanModal({ open: false, plan: null, featuresText: '', submitting: false })}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-purple-300 hover:text-white transition cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={planModal.submitting}
+                    className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition shadow-md shadow-purple-950/40 cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>{planModal.submitting ? 'Salvando...' : 'Salvar Plano'}</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL: EDITAR ASSINATURA DO ASSINANTE COMERCIAL */}
+      {/* ======================================================== */}
+      {subscriberModal.open && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#1b0730] border border-purple-700/60 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between gap-3 border-b border-purple-900/50 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-600 flex items-center justify-center text-white shadow-md">
+                  <CreditCard className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">Editar Assinante Comercial</h3>
+                  <p className="text-xs text-purple-300/80">
+                    Gerencie contrato, valores, status financeiro e observações comerciais.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSubscriberModal((prev) => ({ ...prev, open: false }))}
+                className="p-1.5 rounded-lg text-purple-400 hover:text-white hover:bg-purple-900/50 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveSubscriber} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-purple-200 mb-1">
+                  Empresa / Estabelecimento *
+                </label>
+                <select
+                  value={subscriberModal.businessId}
+                  onChange={(e) => {
+                    const found = businesses.find((b) => b.id === e.target.value);
+                    setSubscriberModal((prev) => ({
+                      ...prev,
+                      businessId: e.target.value,
+                      businessName: found ? found.name : '',
+                      whatsapp: found ? (found.whatsapp || prev.whatsapp) : prev.whatsapp,
+                      planId: found && found.plan_id ? found.plan_id : prev.planId,
+                      status: found && found.subscription_status ? found.subscription_status : prev.status,
+                    }));
+                  }}
+                  required
+                  className="w-full bg-[#200839] border border-purple-900/60 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none focus:border-purple-400 cursor-pointer"
+                >
+                  <option value="">Selecione uma empresa...</option>
+                  {businesses.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name} ({b.address || city.name})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-purple-200 mb-1">
+                    Plano Comercial Contratado
+                  </label>
+                  <select
+                    value={subscriberModal.planId}
+                    onChange={(e) => {
+                      const selPlan = plans.find((p) => p.id === e.target.value);
+                      setSubscriberModal((prev) => ({
+                        ...prev,
+                        planId: e.target.value,
+                        price: selPlan ? String(selPlan.price_monthly) : prev.price,
+                      }));
+                    }}
+                    className="w-full bg-[#200839] border border-purple-900/60 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-purple-400 cursor-pointer"
+                  >
+                    <option value="">Sem Plano (Cortesia/Gratuito)</option>
+                    {plans.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} (R$ {p.price_monthly.toFixed(2).replace('.', ',')})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-purple-200 mb-1">
+                    Status Financeiro *
+                  </label>
+                  <select
+                    value={subscriberModal.status}
+                    onChange={(e) => setSubscriberModal((prev) => ({ ...prev, status: e.target.value }))}
+                    className="w-full bg-[#200839] border border-purple-900/60 rounded-xl px-3.5 py-2.5 text-sm text-white font-bold focus:outline-none focus:border-purple-400 cursor-pointer"
+                  >
+                    <option value="active">🟢 Ativo (Pago / Em dia)</option>
+                    <option value="trial">🟡 Teste Grátis (Trial)</option>
+                    <option value="pending">🟠 Aguardando Pagamento</option>
+                    <option value="canceled">🔴 Cancelado / Inativo</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-purple-200 mb-1">
+                    Valor Cobrado / Mensal (R$)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.10"
+                    value={subscriberModal.price}
+                    onChange={(e) => setSubscriberModal((prev) => ({ ...prev, price: e.target.value }))}
+                    placeholder="Ex: 99.90"
+                    className="w-full bg-[#200839] border border-purple-900/60 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-purple-400"
+                  />
+                  <span className="text-[10px] text-purple-400/70 mt-0.5 block">
+                    Preço customizado ou desconto negociado.
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-purple-200 mb-1">
+                    Data de Vencimento / Renovação
+                  </label>
+                  <input
+                    type="date"
+                    value={subscriberModal.expiresAt}
+                    onChange={(e) => setSubscriberModal((prev) => ({ ...prev, expiresAt: e.target.value }))}
+                    className="w-full bg-[#200839] border border-purple-900/60 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-purple-400"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-purple-200 mb-1">
+                    Nome do Responsável
+                  </label>
+                  <input
+                    type="text"
+                    value={subscriberModal.contactName}
+                    onChange={(e) => setSubscriberModal((prev) => ({ ...prev, contactName: e.target.value }))}
+                    placeholder="Ex: Carlos Eduardo"
+                    className="w-full bg-[#200839] border border-purple-900/60 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-purple-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-purple-200 mb-1">
+                    WhatsApp Comercial
+                  </label>
+                  <input
+                    type="tel"
+                    value={subscriberModal.whatsapp}
+                    onChange={(e) => setSubscriberModal((prev) => ({ ...prev, whatsapp: e.target.value }))}
+                    placeholder="(44) 99988-7766"
+                    className="w-full bg-[#200839] border border-purple-900/60 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-purple-400"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-purple-200 mb-1">
+                  Observações Comerciais & Faturamento
+                </label>
+                <textarea
+                  rows={2}
+                  value={subscriberModal.notes}
+                  onChange={(e) => setSubscriberModal((prev) => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Ex: Contrato anual via PIX. Vencimento todo dia 10. Negociação feita pela franqueada."
+                  className="w-full bg-[#200839] border border-purple-900/60 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-purple-400 leading-relaxed"
+                />
+              </div>
+
+              <div className="flex items-center gap-6 pt-1">
+                <label className="flex items-center gap-2 text-xs text-purple-200 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={subscriberModal.isVerified}
+                    onChange={(e) => setSubscriberModal((prev) => ({ ...prev, isVerified: e.target.checked }))}
+                    className="w-4 h-4 rounded border-purple-700 bg-purple-950/60 text-purple-600 focus:ring-purple-500"
+                  />
+                  <span>Selo Empresa Verificada</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-xs text-purple-200 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={subscriberModal.isFeatured}
+                    onChange={(e) => setSubscriberModal((prev) => ({ ...prev, isFeatured: e.target.checked }))}
+                    className="w-4 h-4 rounded border-purple-700 bg-purple-950/60 text-purple-600 focus:ring-purple-500"
+                  />
+                  <span>Destaque na Página Principal</span>
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-purple-900/40">
+                <button
+                  type="button"
+                  onClick={() => setSubscriberModal((prev) => ({ ...prev, open: false }))}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-purple-300 hover:text-white transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={subscriberModal.submitting}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition shadow-md shadow-emerald-950/40 cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{subscriberModal.submitting ? 'Salvando...' : 'Salvar Assinatura'}</span>
                 </button>
               </div>
             </form>

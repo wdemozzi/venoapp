@@ -81,6 +81,9 @@ export interface Business {
   access_email?: string | null;
   access_password?: string | null;
   access_user?: string | null;
+  subscription_price?: number | null;
+  subscription_expires_at?: string | null;
+  subscription_notes?: string | null;
   created_at?: string;
 }
 
@@ -99,6 +102,10 @@ export function parseBusinessMetadata(business: Business): Business {
         access_email: parsed.access_email || business.access_email || '',
         access_password: parsed.access_password || business.access_password || '',
         access_user: parsed.access_user || business.access_user || '',
+        subscription_price: parsed.subscription_price !== undefined ? Number(parsed.subscription_price) : business.subscription_price,
+        subscription_expires_at: parsed.subscription_expires_at || business.subscription_expires_at || '',
+        subscription_notes: parsed.subscription_notes || business.subscription_notes || '',
+        contact_name: parsed.contact_name || business.contact_name || '',
       };
     } catch {
       // ignore parse error
@@ -115,10 +122,14 @@ export function formatBusinessDescriptionWithMetadata(
     access_email?: string | null;
     access_password?: string | null;
     access_user?: string | null;
+    subscription_price?: number | null;
+    subscription_expires_at?: string | null;
+    subscription_notes?: string | null;
+    contact_name?: string | null;
   }
 ): string {
   const clean = (description || '').replace(/<!--\s*meta:{[\s\S]*?}\s*-->/g, '').trim();
-  const metaObj: Record<string, string> = {};
+  const metaObj: Record<string, string | number> = {};
   if (metadata.instagram && metadata.instagram.trim()) {
     metaObj.instagram = metadata.instagram.trim();
   }
@@ -134,10 +145,79 @@ export function formatBusinessDescriptionWithMetadata(
   if (metadata.access_user && metadata.access_user.trim()) {
     metaObj.access_user = metadata.access_user.trim().toLowerCase();
   }
+  if (metadata.subscription_price !== undefined && metadata.subscription_price !== null && !isNaN(Number(metadata.subscription_price))) {
+    metaObj.subscription_price = Number(metadata.subscription_price);
+  }
+  if (metadata.subscription_expires_at && metadata.subscription_expires_at.trim()) {
+    metaObj.subscription_expires_at = metadata.subscription_expires_at.trim();
+  }
+  if (metadata.subscription_notes && metadata.subscription_notes.trim()) {
+    metaObj.subscription_notes = metadata.subscription_notes.trim();
+  }
+  if (metadata.contact_name && metadata.contact_name.trim()) {
+    metaObj.contact_name = metadata.contact_name.trim();
+  }
   if (Object.keys(metaObj).length === 0) {
     return clean;
   }
   return `${clean}\n\n<!-- meta:${JSON.stringify(metaObj)} -->`;
+}
+
+export async function updateBusinessSubscription(
+  businessId: string,
+  data: {
+    plan_id?: string | null;
+    subscription_status?: string;
+    subscription_price?: number | null;
+    subscription_expires_at?: string | null;
+    subscription_notes?: string | null;
+    contact_name?: string | null;
+    whatsapp?: string | null;
+    is_verified?: boolean;
+    is_featured?: boolean;
+  }
+): Promise<boolean> {
+  if (!businessId) return false;
+  try {
+    const business = await getBusinessById(businessId);
+    if (!business) return false;
+
+    const newDescription = formatBusinessDescriptionWithMetadata(business.description, {
+      instagram: business.instagram,
+      website: business.website,
+      access_email: business.access_email,
+      access_password: business.access_password,
+      access_user: business.access_user,
+      subscription_price: data.subscription_price !== undefined ? data.subscription_price : business.subscription_price,
+      subscription_expires_at: data.subscription_expires_at !== undefined ? data.subscription_expires_at : business.subscription_expires_at,
+      subscription_notes: data.subscription_notes !== undefined ? data.subscription_notes : business.subscription_notes,
+      contact_name: data.contact_name !== undefined ? data.contact_name : business.contact_name,
+    });
+
+    const updatePayload: Record<string, unknown> = {
+      description: newDescription,
+    };
+    if (data.plan_id !== undefined) updatePayload.plan_id = data.plan_id;
+    if (data.subscription_status !== undefined) updatePayload.subscription_status = data.subscription_status;
+    if (data.whatsapp !== undefined) updatePayload.whatsapp = data.whatsapp;
+    if (data.is_verified !== undefined) updatePayload.is_verified = data.is_verified;
+    if (data.is_featured !== undefined) updatePayload.is_featured = data.is_featured;
+
+    if (isSupabaseConfigured) {
+      const { error } = await supabase
+        .from('businesses')
+        .update(updatePayload)
+        .eq('id', businessId);
+      if (error) console.warn('[Supabase] Erro ao atualizar assinatura:', error);
+    }
+
+    clearCache('business:');
+    clearCache('businesses:');
+    return true;
+  } catch (err) {
+    console.warn('[Supabase] Falha ao atualizar assinatura:', err);
+    return false;
+  }
 }
 
 export async function updateBusinessAccessCredentials(

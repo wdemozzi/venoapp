@@ -194,7 +194,7 @@ export default function AdminPage() {
       open: true,
       business: bus,
       email: bus.access_email || `${bus.slug || 'contato'}@venoapp.com`,
-      password: bus.access_password || '123456',
+      password: bus.access_password || '',
       username: bus.access_user || bus.slug || '',
       saving: false,
     });
@@ -1113,21 +1113,9 @@ export default function AdminPage() {
           </form>
 
           <div className="pt-2 border-t border-purple-900/40 text-center space-y-3">
-            <div className="bg-purple-950/60 border border-purple-800/40 rounded-xl p-3 text-[11px] text-purple-300 text-left space-y-1">
-              <p className="font-bold text-white flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
-                <span>Acessos Rápidos do Sistema:</span>
-              </p>
-              <p className="text-purple-300/80">
-                • <strong>Master Nacional:</strong> <code className="text-purple-200 font-mono">demozzi</code> / <code className="text-purple-200 font-mono">Rest2710#</code>
-              </p>
-              <p className="text-purple-300/80">
-                • <strong>Franquia Cianorte:</strong> <code className="text-purple-200 font-mono">cianorte</code> / <code className="text-purple-200 font-mono">Rest2710#</code>
-              </p>
-              <p className="text-purple-300/80">
-                • <strong>Franquia Maringá:</strong> <code className="text-purple-200 font-mono">maringa</code> / <code className="text-purple-200 font-mono">Rest2710#</code>
-              </p>
-            </div>
+            <p className="text-[11px] text-purple-400/70">
+              Acesso exclusivo para administradores e franqueados autorizados.
+            </p>
             <div>
               <Link
                 href="/"

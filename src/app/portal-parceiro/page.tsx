@@ -558,7 +558,7 @@ export default function PartnerPortalPage() {
 
           <div className="pt-2 border-t border-purple-900/40 text-center space-y-3">
             <p className="text-[11px] text-purple-400/70">
-              Acessos de demonstração: <span className="font-mono font-bold text-purple-200">sabor</span> / <span className="font-mono font-bold text-purple-200">123456</span> ou <span className="font-mono font-bold text-purple-200">bella</span> / <span className="font-mono font-bold text-purple-200">123456</span>
+              Acesso exclusivo para lojistas e comerciantes parceiros credenciados.
             </p>
             <div className="flex flex-col gap-2">
               <Link

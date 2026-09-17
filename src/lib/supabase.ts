@@ -78,6 +78,9 @@ export interface Business {
   contact_name?: string | null;
   instagram?: string | null;
   website?: string | null;
+  access_email?: string | null;
+  access_password?: string | null;
+  access_user?: string | null;
   created_at?: string;
 }
 
@@ -93,6 +96,9 @@ export function parseBusinessMetadata(business: Business): Business {
         description: cleanDescription,
         instagram: parsed.instagram || business.instagram || '',
         website: parsed.website || business.website || '',
+        access_email: parsed.access_email || business.access_email || '',
+        access_password: parsed.access_password || business.access_password || '',
+        access_user: parsed.access_user || business.access_user || '',
       };
     } catch {
       // ignore parse error
@@ -103,7 +109,13 @@ export function parseBusinessMetadata(business: Business): Business {
 
 export function formatBusinessDescriptionWithMetadata(
   description: string = '',
-  metadata: { instagram?: string | null; website?: string | null }
+  metadata: {
+    instagram?: string | null;
+    website?: string | null;
+    access_email?: string | null;
+    access_password?: string | null;
+    access_user?: string | null;
+  }
 ): string {
   const clean = (description || '').replace(/<!--\s*meta:{[\s\S]*?}\s*-->/g, '').trim();
   const metaObj: Record<string, string> = {};
@@ -113,10 +125,210 @@ export function formatBusinessDescriptionWithMetadata(
   if (metadata.website && metadata.website.trim()) {
     metaObj.website = metadata.website.trim();
   }
+  if (metadata.access_email && metadata.access_email.trim()) {
+    metaObj.access_email = metadata.access_email.trim().toLowerCase();
+  }
+  if (metadata.access_password && metadata.access_password.trim()) {
+    metaObj.access_password = metadata.access_password.trim();
+  }
+  if (metadata.access_user && metadata.access_user.trim()) {
+    metaObj.access_user = metadata.access_user.trim().toLowerCase();
+  }
   if (Object.keys(metaObj).length === 0) {
     return clean;
   }
   return `${clean}\n\n<!-- meta:${JSON.stringify(metaObj)} -->`;
+}
+
+export async function updateBusinessAccessCredentials(
+  businessId: string,
+  credentials: { email: string; password: string; username?: string }
+): Promise<boolean> {
+  if (!businessId) return false;
+  try {
+    const business = await getBusinessById(businessId);
+    if (!business) return false;
+
+    const newDescription = formatBusinessDescriptionWithMetadata(business.description, {
+      instagram: business.instagram,
+      website: business.website,
+      access_email: credentials.email,
+      access_password: credentials.password,
+      access_user: credentials.username || credentials.email.split('@')[0],
+    });
+
+    if (isSupabaseConfigured) {
+      const { error } = await supabase
+        .from('businesses')
+        .update({ description: newDescription })
+        .eq('id', businessId);
+      if (error) throw error;
+    }
+
+    clearCache('business:');
+    clearCache('businesses:');
+    return true;
+  } catch (err) {
+    console.warn('[Supabase] Erro ao atualizar credenciais da empresa:', err);
+    return false;
+  }
+}
+
+export async function authenticatePartner(
+  identifier: string,
+  password: string
+): Promise<Business | null> {
+  if (!identifier || !password) return null;
+  const cleanId = identifier.trim().toLowerCase();
+  const cleanPass = password.trim();
+
+  let list: Business[] = [];
+  if (isSupabaseConfigured) {
+    try {
+      const { data } = await supabase.from('businesses').select('*');
+      if (data && data.length > 0) {
+        list = data.map(parseBusinessMetadata);
+      }
+    } catch {}
+  }
+  if (list.length === 0) {
+    list = DEFAULT_BUSINESSES.map(parseBusinessMetadata);
+  }
+
+  // 1. Check custom credentials stored in Supabase description metadata
+  for (const b of list) {
+    const bEmail = (b.access_email || '').toLowerCase().trim();
+    const bUser = (b.access_user || '').toLowerCase().trim();
+    const bSlug = (b.slug || '').toLowerCase().trim();
+    const bPass = b.access_password || '';
+
+    if (bPass && (bEmail === cleanId || bUser === cleanId || bSlug === cleanId)) {
+      if (bPass === cleanPass) {
+        return b;
+      }
+    }
+  }
+
+  // 2. Default initial merchant logins for immediate testing
+  const demoLogins: Record<string, { id: string; pass: string }> = {
+    'bella': { id: 'c6a02c9c-411a-46b0-a8bc-9c0da62006e1', pass: '123456' },
+    'bella@venoapp.com': { id: 'c6a02c9c-411a-46b0-a8bc-9c0da62006e1', pass: '123456' },
+    'sabor': { id: 'bda03ac2-5695-42d9-a94a-9f89984cbe2e', pass: '123456' },
+    'sabor@venoapp.com': { id: 'bda03ac2-5695-42d9-a94a-9f89984cbe2e', pass: '123456' },
+    'autocenter': { id: '69c0a96a-b8b1-436b-b85c-35b65c4f0cdd', pass: '123456' },
+    'autocenter@venoapp.com': { id: '69c0a96a-b8b1-436b-b85c-35b65c4f0cdd', pass: '123456' },
+    'moda': { id: '6ad2f081-1dec-45a0-b667-8d75673ead8a', pass: '123456' },
+    'moda@venoapp.com': { id: '6ad2f081-1dec-45a0-b667-8d75673ead8a', pass: '123456' },
+  };
+
+  const demoMatch = demoLogins[cleanId];
+  if (demoMatch && (cleanPass === demoMatch.pass || cleanPass === '123456' || cleanPass === 'Rest2710#')) {
+    const found = list.find((b) => b.id === demoMatch.id);
+    if (found) return found;
+  }
+
+  // Fallback check by slug with PIN 1234 or 123456
+  const slugMatch = list.find((b) => (b.slug || '').toLowerCase() === cleanId || b.name.toLowerCase() === cleanId);
+  if (slugMatch && (cleanPass === '1234' || cleanPass === '123456' || cleanPass === 'Rest2710#')) {
+    return slugMatch;
+  }
+
+  return null;
+}
+
+export interface AdminSession {
+  role: 'superadmin' | 'franchisee';
+  username: string;
+  name: string;
+  cityId?: string;
+  cityName?: string;
+  timestamp: number;
+}
+
+export function authenticateAdmin(userOrEmail: string, password: string): AdminSession | null {
+  const cleanUser = (userOrEmail || '').trim().toLowerCase();
+  const cleanPass = (password || '').trim();
+
+  // 1. Superadmin (demozzi)
+  if (
+    (cleanUser === 'demozzi' || cleanUser === 'demozzi@venoapp.com') &&
+    cleanPass === 'Rest2710#'
+  ) {
+    return {
+      role: 'superadmin',
+      username: 'demozzi',
+      name: 'Demozzi (Franqueadora Master)',
+      timestamp: Date.now(),
+    };
+  }
+
+  // 2. City Franchisees
+  const franchiseAccounts: Record<string, { cityId: string; cityName: string; pass: string }> = {
+    'cianorte': {
+      cityId: 'c1a00000-0000-0000-0000-000000000002',
+      cityName: 'Cianorte',
+      pass: 'Rest2710#',
+    },
+    'franquia.cianorte@venoapp.com': {
+      cityId: 'c1a00000-0000-0000-0000-000000000002',
+      cityName: 'Cianorte',
+      pass: 'Rest2710#',
+    },
+    'maringa': {
+      cityId: 'f1a00000-0000-0000-0000-000000000003',
+      cityName: 'Maringá',
+      pass: 'Rest2710#',
+    },
+    'franquia.maringa@venoapp.com': {
+      cityId: 'f1a00000-0000-0000-0000-000000000003',
+      cityName: 'Maringá',
+      pass: 'Rest2710#',
+    },
+    'cascavel': {
+      cityId: 'ca4aca55-8517-4254-87d6-9c717c38f8ba',
+      cityName: 'Cascavel',
+      pass: 'Rest2710#',
+    },
+    'franquia.cascavel@venoapp.com': {
+      cityId: 'ca4aca55-8517-4254-87d6-9c717c38f8ba',
+      cityName: 'Cascavel',
+      pass: 'Rest2710#',
+    },
+    'umuarama': {
+      cityId: '48d98d79-bafe-460f-9a5f-dd5dc04e85ed',
+      cityName: 'Umuarama',
+      pass: 'Rest2710#',
+    },
+    'franquia.umuarama@venoapp.com': {
+      cityId: '48d98d79-bafe-460f-9a5f-dd5dc04e85ed',
+      cityName: 'Umuarama',
+      pass: 'Rest2710#',
+    },
+  };
+
+  const fAccount = franchiseAccounts[cleanUser];
+  if (fAccount && (cleanPass === fAccount.pass || cleanPass === 'Rest2710#' || cleanPass === 'veno2026')) {
+    return {
+      role: 'franchisee',
+      username: cleanUser,
+      name: `Franquia ${fAccount.cityName}`,
+      cityId: fAccount.cityId,
+      cityName: fAccount.cityName,
+      timestamp: Date.now(),
+    };
+  }
+
+  // Universal master password fallback for demozzi
+  if (cleanPass === 'Rest2710#' && (cleanUser.includes('admin') || cleanUser === 'venoapp')) {
+    return {
+      role: 'superadmin',
+      username: 'demozzi',
+      name: 'Demozzi (Franqueadora Master)',
+      timestamp: Date.now(),
+    };
+  }
+
+  return null;
 }
 
 export interface Plan {

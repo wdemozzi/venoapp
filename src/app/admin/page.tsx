@@ -66,6 +66,9 @@ import {
   DEFAULT_CITIES,
   parseBusinessMetadata,
   formatBusinessDescriptionWithMetadata,
+  AdminSession,
+  authenticateAdmin,
+  updateBusinessAccessCredentials,
 } from '@/lib/supabase';
 import defaultBannersData from '@/data/banners.json';
 
@@ -76,13 +79,32 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
-  // Security Authentication Lock State
+  // Security Authentication Lock State & Scope
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [adminSession, setAdminSession] = useState<AdminSession | null>(null);
   const [authChecked, setAuthChecked] = useState<boolean>(false);
-  const [pinInput, setPinInput] = useState('');
+  const [adminUserInput, setAdminUserInput] = useState('');
+  const [adminPasswordInput, setAdminPasswordInput] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
+
+  // User Access Modal State for Businesses (/portal-parceiro)
+  const [userAccessModal, setUserAccessModal] = useState<{
+    open: boolean;
+    business: SupabaseBusiness | null;
+    email: string;
+    password: string;
+    username: string;
+    saving: boolean;
+  }>({
+    open: false,
+    business: null,
+    email: '',
+    password: '',
+    username: '',
+    saving: false,
+  });
 
   useEffect(() => {
     try {
@@ -90,9 +112,24 @@ export default function AdminPage() {
         const saved = window.localStorage.getItem('venoapp_admin_auth');
         if (saved) {
           const parsed = JSON.parse(saved);
-          // Valid for 7 days
-          if (Date.now() - parsed.timestamp < 7 * 24 * 60 * 60 * 1000) {
-            setIsAuthenticated(true);
+          if (parsed && (!parsed.timestamp || Date.now() - parsed.timestamp < 7 * 24 * 60 * 60 * 1000)) {
+            if (parsed.role) {
+              setAdminSession(parsed);
+              setIsAuthenticated(true);
+              if (parsed.role === 'franchisee' && parsed.cityId) {
+                setSelectedCityId(parsed.cityId);
+              }
+            } else {
+              // Backward compatibility
+              const fallback: AdminSession = {
+                role: 'superadmin',
+                username: 'demozzi',
+                name: 'Demozzi (Franqueadora Master)',
+                timestamp: parsed.timestamp || Date.now(),
+              };
+              setAdminSession(fallback);
+              setIsAuthenticated(true);
+            }
           }
         }
       }
@@ -102,27 +139,91 @@ export default function AdminPage() {
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanPin = pinInput.trim().toLowerCase();
-    const validPins = ['admin2026', 'veno2026', '2026', 'admin'];
-    if (validPins.includes(cleanPin)) {
+    const session = authenticateAdmin(adminUserInput, adminPasswordInput);
+    if (session) {
+      setAdminSession(session);
       setIsAuthenticated(true);
       setAuthError('');
+      if (session.role === 'franchisee' && session.cityId) {
+        setSelectedCityId(session.cityId);
+        refreshData(session.cityId);
+      }
       if (rememberMe) {
         try {
-          window.localStorage.setItem('venoapp_admin_auth', JSON.stringify({ timestamp: Date.now() }));
+          window.localStorage.setItem('venoapp_admin_auth', JSON.stringify(session));
         } catch {}
       }
     } else {
-      setAuthError('PIN ou Senha administrativa incorreta. Tente novamente.');
+      // Legacy PIN fallback
+      const cleanU = adminUserInput.trim().toLowerCase();
+      const cleanP = adminPasswordInput.trim().toLowerCase();
+      const validPins = ['admin2026', 'veno2026', '2026', 'admin'];
+      if (validPins.includes(cleanU) || validPins.includes(cleanP)) {
+        const fallbackSession: AdminSession = {
+          role: 'superadmin',
+          username: 'demozzi',
+          name: 'Demozzi (Franqueadora Master)',
+          timestamp: Date.now(),
+        };
+        setAdminSession(fallbackSession);
+        setIsAuthenticated(true);
+        setAuthError('');
+        if (rememberMe) {
+          try {
+            window.localStorage.setItem('venoapp_admin_auth', JSON.stringify(fallbackSession));
+          } catch {}
+        }
+        return;
+      }
+      setAuthError('Usuário ou senha incorretos. Use "demozzi" ou o usuário da sua franquia.');
     }
   };
 
   const handleAdminLogout = () => {
     setIsAuthenticated(false);
-    setPinInput('');
+    setAdminSession(null);
+    setAdminUserInput('');
+    setAdminPasswordInput('');
     try {
       window.localStorage.removeItem('venoapp_admin_auth');
     } catch {}
+  };
+
+  const handleOpenUserAccessModal = (bus: SupabaseBusiness) => {
+    setUserAccessModal({
+      open: true,
+      business: bus,
+      email: bus.access_email || `${bus.slug || 'contato'}@venoapp.com`,
+      password: bus.access_password || '123456',
+      username: bus.access_user || bus.slug || '',
+      saving: false,
+    });
+  };
+
+  const handleSaveUserAccess = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userAccessModal.business || !userAccessModal.business.id) return;
+    if (!userAccessModal.email || !userAccessModal.password) {
+      showToast('Preencha o e-mail e a senha de acesso.', 'error');
+      return;
+    }
+    setUserAccessModal((prev) => ({ ...prev, saving: true }));
+    try {
+      const success = await updateBusinessAccessCredentials(userAccessModal.business.id, {
+        email: userAccessModal.email,
+        password: userAccessModal.password,
+        username: userAccessModal.username || userAccessModal.email.split('@')[0],
+      });
+      if (!success) throw new Error('Falha ao salvar credenciais.');
+      showToast(`Acesso configurado para "${userAccessModal.business.name}" com sucesso!`);
+      setUserAccessModal((prev) => ({ ...prev, open: false, business: null }));
+      refreshData();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao salvar credenciais';
+      showToast(msg, 'error');
+    } finally {
+      setUserAccessModal((prev) => ({ ...prev, saving: false }));
+    }
   };
 
   // Multi-tenant city states
@@ -293,7 +394,9 @@ export default function AdminPage() {
         // fallback
       }
 
-      const activeCityId = forcedCityId || selectedCityId;
+      const activeCityId = (adminSession?.role === 'franchisee' && adminSession.cityId)
+        ? adminSession.cityId
+        : (forcedCityId || selectedCityId);
       const activeCityObj = currentCities.find((c) => c.id === activeCityId) || currentCities[0];
       setCity(activeCityObj);
       setSelectedCityId(activeCityObj.id);
@@ -332,7 +435,7 @@ export default function AdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCityId, availableCities]);
+  }, [selectedCityId, availableCities, adminSession]);
 
   useEffect(() => {
     let ignore = false;
@@ -347,6 +450,10 @@ export default function AdminPage() {
   }, [refreshData]);
 
   const handleChangeCity = (newCityId: string) => {
+    if (adminSession?.role === 'franchisee') {
+      showToast('Acesso restrito à praça de sua franquia.', 'error');
+      return;
+    }
     setSelectedCityId(newCityId);
     refreshData(newCityId);
     const target = availableCities.find((c) => c.id === newCityId);
@@ -936,7 +1043,7 @@ export default function AdminPage() {
               Acesso Administrativo
             </h1>
             <p className="text-xs text-purple-200/70">
-              Painel de Gestão e Franquias do Venoapp. Digite o PIN ou Senha Master para continuar.
+              Painel de Gestão e Franquias do Venoapp. Digite o Usuário e Senha para continuar.
             </p>
           </div>
 
@@ -950,15 +1057,29 @@ export default function AdminPage() {
 
             <div>
               <label className="block text-xs font-bold text-purple-200 mb-1.5 uppercase tracking-wider">
-                PIN / Senha de Administrador
+                Usuário ou E-mail
+              </label>
+              <input
+                type="text"
+                value={adminUserInput}
+                onChange={(e) => setAdminUserInput(e.target.value)}
+                placeholder="Ex: demozzi ou cianorte"
+                autoFocus
+                required
+                className="w-full bg-[#250a41] border border-purple-700/60 rounded-xl px-4 py-3 text-sm text-white placeholder-purple-400/40 focus:outline-none focus:ring-2 focus:ring-purple-400 font-medium"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-purple-200 mb-1.5 uppercase tracking-wider">
+                Senha de Acesso
               </label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
-                  value={pinInput}
-                  onChange={(e) => setPinInput(e.target.value)}
-                  placeholder="Digite a senha ou PIN..."
-                  autoFocus
+                  value={adminPasswordInput}
+                  onChange={(e) => setAdminPasswordInput(e.target.value)}
+                  placeholder="Digite sua senha..."
                   required
                   className="w-full bg-[#250a41] border border-purple-700/60 rounded-xl px-4 py-3 text-sm text-white placeholder-purple-400/40 focus:outline-none focus:ring-2 focus:ring-purple-400 font-mono tracking-wider pr-10"
                 />
@@ -987,14 +1108,26 @@ export default function AdminPage() {
               className="w-full bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-sm py-3 rounded-xl shadow-lg shadow-purple-950 transition transform hover:scale-[1.01] cursor-pointer flex items-center justify-center gap-2"
             >
               <Key className="w-4 h-4" />
-              <span>Desbloquear Painel</span>
+              <span>Acessar Painel</span>
             </button>
           </form>
 
           <div className="pt-2 border-t border-purple-900/40 text-center space-y-3">
-            <p className="text-[11px] text-purple-400/70">
-              PIN Master Padrão: <span className="font-mono font-bold text-purple-200">admin2026</span> ou <span className="font-mono font-bold text-purple-200">2026</span>
-            </p>
+            <div className="bg-purple-950/60 border border-purple-800/40 rounded-xl p-3 text-[11px] text-purple-300 text-left space-y-1">
+              <p className="font-bold text-white flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
+                <span>Acessos Rápidos do Sistema:</span>
+              </p>
+              <p className="text-purple-300/80">
+                • <strong>Master Nacional:</strong> <code className="text-purple-200 font-mono">demozzi</code> / <code className="text-purple-200 font-mono">Rest2710#</code>
+              </p>
+              <p className="text-purple-300/80">
+                • <strong>Franquia Cianorte:</strong> <code className="text-purple-200 font-mono">cianorte</code> / <code className="text-purple-200 font-mono">Rest2710#</code>
+              </p>
+              <p className="text-purple-300/80">
+                • <strong>Franquia Maringá:</strong> <code className="text-purple-200 font-mono">maringa</code> / <code className="text-purple-200 font-mono">Rest2710#</code>
+              </p>
+            </div>
             <div>
               <Link
                 href="/"
@@ -1066,25 +1199,39 @@ export default function AdminPage() {
 
           <div className="flex items-center gap-3">
             {/* Visual Franchise / City Selector */}
-            <div className="flex items-center gap-2 bg-[#290d48] border border-purple-700/60 rounded-xl px-3 py-1.5 shadow-sm">
-              <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <div className="flex flex-col">
-                <span className="text-[9px] text-purple-300/70 uppercase font-bold tracking-wider leading-none">
-                  Franquia Ativa
-                </span>
-                <select
-                  value={selectedCityId}
-                  onChange={(e) => handleChangeCity(e.target.value)}
-                  className="bg-transparent text-white font-bold text-xs focus:outline-none cursor-pointer pr-1"
-                >
-                  {availableCities.map((c) => (
-                    <option key={c.id} value={c.id} className="bg-[#1b0730] text-white">
-                      {c.name} - {c.state || 'PR'}
-                    </option>
-                  ))}
-                </select>
+            {adminSession?.role === 'franchisee' ? (
+              <div className="flex items-center gap-2 bg-[#290d48] border border-amber-600/60 rounded-xl px-3 py-1.5 shadow-sm">
+                <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
+                <div className="flex flex-col">
+                  <span className="text-[9px] text-amber-300/80 uppercase font-bold tracking-wider leading-none">
+                    Franquia Exclusiva
+                  </span>
+                  <span className="text-white font-bold text-xs">
+                    {adminSession.cityName || city.name} ({city.state || 'PR'})
+                  </span>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex items-center gap-2 bg-[#290d48] border border-purple-700/60 rounded-xl px-3 py-1.5 shadow-sm">
+                <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <div className="flex flex-col">
+                  <span className="text-[9px] text-purple-300/70 uppercase font-bold tracking-wider leading-none">
+                    {adminSession?.role === 'superadmin' ? '👑 Master • Selecionar Praça' : 'Franquia Ativa'}
+                  </span>
+                  <select
+                    value={selectedCityId}
+                    onChange={(e) => handleChangeCity(e.target.value)}
+                    className="bg-transparent text-white font-bold text-xs focus:outline-none cursor-pointer pr-1"
+                  >
+                    {availableCities.map((c) => (
+                      <option key={c.id} value={c.id} className="bg-[#1b0730] text-white">
+                        {c.name} - {c.state || 'PR'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
 
             <Link
               href={`/${city.slug}`}
@@ -1255,22 +1402,24 @@ export default function AdminPage() {
               </div>
             </button>
 
-            <button
-              onClick={() => setActiveTab('franchises')}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition cursor-pointer ${
-                activeTab === 'franchises'
-                  ? 'bg-purple-700 text-white shadow-md'
-                  : 'text-purple-200/80 hover:text-white hover:bg-purple-950/60'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <Globe className="w-4 h-4 text-amber-400" />
-                <span>Franquias & Cidades</span>
-              </div>
-              <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-mono font-bold">
-                {availableCities.length}
-              </span>
-            </button>
+            {adminSession?.role !== 'franchisee' && (
+              <button
+                onClick={() => setActiveTab('franchises')}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition cursor-pointer ${
+                  activeTab === 'franchises'
+                    ? 'bg-purple-700 text-white shadow-md'
+                    : 'text-purple-200/80 hover:text-white hover:bg-purple-950/60'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Globe className="w-4 h-4 text-amber-400" />
+                  <span>Franquias & Cidades</span>
+                </div>
+                <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-mono font-bold">
+                  {availableCities.length}
+                </span>
+              </button>
+            )}
           </nav>
 
           {/* Quick Help Card */}
@@ -1509,6 +1658,21 @@ export default function AdminPage() {
                           <Star className="w-3 h-3 fill-amber-400" />
                           <span>{bus.rating || '5.0'}</span>
                         </div>
+
+                        {/* Criar Acesso / Usuário do Comerciante */}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenUserAccessModal(bus)}
+                          className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer border ${
+                            bus.access_email || bus.access_password
+                              ? 'bg-emerald-950/70 text-emerald-300 border-emerald-700/60 hover:bg-emerald-900/80 hover:text-white'
+                              : 'bg-indigo-950/70 text-indigo-300 border-indigo-700/60 hover:bg-indigo-900/80 hover:text-white'
+                          }`}
+                          title="Gerenciar login e senha do comerciante no Portal do Parceiro"
+                        >
+                          <Key className="w-3.5 h-3.5 text-amber-400" />
+                          <span>{bus.access_email || bus.access_password ? 'Acesso Criado' : 'Criar Acesso / Usuário'}</span>
+                        </button>
 
                         {/* Quick Toggles */}
                         <button
@@ -4534,6 +4698,116 @@ export default function AdminPage() {
                   className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-6 py-2 rounded-xl transition shadow-md shadow-amber-950/40 cursor-pointer disabled:opacity-50"
                 >
                   {franchiseModal.submitting ? 'Cadastrando...' : 'Criar Franquia'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL: GERENCIAR ACESSO DO LOJISTA (/portal-parceiro) */}
+      {/* ======================================================== */}
+      {userAccessModal.open && userAccessModal.business && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#1b0730] border border-purple-700/60 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between gap-3 border-b border-purple-900/50 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-md">
+                  <Key className="w-5 h-5 text-amber-300" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">Criar Acesso / Usuário</h3>
+                  <p className="text-xs text-purple-300/80 truncate max-w-[240px]">
+                    {userAccessModal.business.name}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setUserAccessModal((prev) => ({ ...prev, open: false, business: null }))}
+                className="p-1.5 rounded-lg text-purple-400 hover:text-white hover:bg-purple-900/50 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-purple-300/80 bg-purple-950/60 border border-purple-800/40 p-3 rounded-xl leading-relaxed">
+              Defina as credenciais para o comerciante acessar o <strong>/portal-parceiro</strong> e gerenciar ofertas, cupons e perfil comercial desta empresa com total isolamento.
+            </p>
+
+            <form onSubmit={handleSaveUserAccess} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-purple-200 mb-1">
+                  E-mail de Login do Comerciante *
+                </label>
+                <input
+                  type="email"
+                  value={userAccessModal.email}
+                  onChange={(e) => setUserAccessModal((prev) => ({ ...prev, email: e.target.value }))}
+                  required
+                  placeholder="exemplo@empresa.com.br"
+                  className="w-full bg-[#200839] border border-purple-900/60 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-purple-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-purple-200 mb-1">
+                  Usuário Alternativo (opcional)
+                </label>
+                <input
+                  type="text"
+                  value={userAccessModal.username}
+                  onChange={(e) => setUserAccessModal((prev) => ({ ...prev, username: e.target.value }))}
+                  placeholder="ex: pizzariabella"
+                  className="w-full bg-[#200839] border border-purple-900/60 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-purple-400"
+                />
+                <span className="text-[10px] text-purple-400/70 mt-1 block">
+                  Permite que o lojista faça login tanto pelo e-mail quanto pelo usuário.
+                </span>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-purple-200">
+                    Senha de Acesso *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const randomPass = Math.random().toString(36).slice(-8);
+                      setUserAccessModal((prev) => ({ ...prev, password: randomPass }));
+                    }}
+                    className="text-[10px] text-amber-400 hover:text-amber-300 underline font-medium"
+                  >
+                    Gerar Senha Forte
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={userAccessModal.password}
+                  onChange={(e) => setUserAccessModal((prev) => ({ ...prev, password: e.target.value }))}
+                  required
+                  placeholder="Digite a senha do parceiro..."
+                  className="w-full bg-[#200839] border border-purple-900/60 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-purple-400"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-purple-900/40">
+                <button
+                  type="button"
+                  onClick={() => setUserAccessModal((prev) => ({ ...prev, open: false, business: null }))}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-purple-300 hover:text-white transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={userAccessModal.saving}
+                  className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition shadow-lg shadow-purple-950/40 cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{userAccessModal.saving ? 'Salvando...' : 'Salvar Acesso'}</span>
                 </button>
               </div>
             </form>

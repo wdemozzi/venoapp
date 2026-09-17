@@ -46,6 +46,7 @@ import {
   getAnalyticsByBusiness,
   parseBusinessMetadata,
   formatBusinessDescriptionWithMetadata,
+  authenticatePartner,
 } from '@/lib/supabase';
 
 const DEFAULT_CITY_ID = '48d98d79-bafe-460f-9a5f-dd5dc04e85ed';
@@ -61,13 +62,14 @@ export default function PartnerPortalPage() {
   const [selectedBusinessId, setSelectedBusinessId] = useState<string>('');
   const [currentBusiness, setCurrentBusiness] = useState<SupabaseBusiness | null>(null);
 
-  // Merchant security / authentication states
+  // Merchant security / authentication states (E-mail/User and Password)
   const [isPartnerAuthenticated, setIsPartnerAuthenticated] = useState<boolean>(false);
-  const [loginBusinessId, setLoginBusinessId] = useState<string>('');
-  const [loginPin, setLoginPin] = useState<string>('');
+  const [loginIdentifier, setLoginIdentifier] = useState<string>('');
+  const [loginPassword, setLoginPassword] = useState<string>('');
   const [partnerAuthError, setPartnerAuthError] = useState<string>('');
   const [rememberPartner, setRememberPartner] = useState<boolean>(true);
-  const [showPartnerPin, setShowPartnerPin] = useState<boolean>(false);
+  const [showPassword, setShowPassword] = useState<boolean>(false);
+  const [loggingIn, setLoggingIn] = useState<boolean>(false);
 
   // File upload state (Profile & Offers)
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -181,39 +183,47 @@ export default function PartnerPortalPage() {
 
   const handlePartnerLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!loginBusinessId) {
-      setPartnerAuthError('Por favor, selecione a sua empresa na lista.');
+    if (!loginIdentifier.trim()) {
+      setPartnerAuthError('Informe o seu E-mail ou Usuário de acesso.');
+      return;
+    }
+    if (!loginPassword.trim()) {
+      setPartnerAuthError('Informe a sua Senha.');
       return;
     }
 
-    const matched = businesses.find((b) => b.id === loginBusinessId);
-    if (!matched) {
-      setPartnerAuthError('Empresa não encontrada no sistema.');
-      return;
-    }
-
-    const cleanPin = loginPin.trim().toLowerCase();
-    const phoneDigits = (matched.whatsapp || matched.phone || '').replace(/\D/g, '');
-    const last4 = phoneDigits.slice(-4);
-    const validPins = ['1234', '2026', 'admin2026', 'veno2026', last4].filter(Boolean);
-
-    // Accept default PIN 1234, 2026 or last 4 digits of phone
-    if (validPins.includes(cleanPin) || cleanPin === '1234' || cleanPin === '2026') {
-      setIsPartnerAuthenticated(true);
-      setSelectedBusinessId(matched.id);
-      setCurrentBusiness(matched);
+    try {
+      setLoggingIn(true);
       setPartnerAuthError('');
-      if (rememberPartner) {
-        try {
-          localStorage.setItem(
-            'venoapp_partner_session',
-            JSON.stringify({ businessId: matched.id, timestamp: Date.now() })
-          );
-        } catch {}
+      const matched = await authenticatePartner(loginIdentifier, loginPassword);
+
+      if (matched) {
+        setIsPartnerAuthenticated(true);
+        setSelectedBusinessId(matched.id);
+        setCurrentBusiness(matched);
+        if (rememberPartner) {
+          try {
+            localStorage.setItem(
+              'venoapp_partner_session',
+              JSON.stringify({
+                businessId: matched.id,
+                identifier: loginIdentifier.trim(),
+                timestamp: Date.now(),
+              })
+            );
+          } catch {}
+        }
+        refreshBusinessData(matched.id);
+        showToast(`Bem-vindo, ${matched.name}! Painel liberado.`);
+      } else {
+        setPartnerAuthError(
+          'E-mail/Usuário ou Senha incorretos. Contate o administrador caso não possua acesso cadastrado.'
+        );
       }
-      refreshBusinessData(matched.id);
-    } else {
-      setPartnerAuthError('Código ou PIN incorreto. (PIN padrão de demonstração: 1234 ou 2026)');
+    } catch {
+      setPartnerAuthError('Erro ao validar acesso. Tente novamente.');
+    } finally {
+      setLoggingIn(false);
     }
   };
 
@@ -221,7 +231,8 @@ export default function PartnerPortalPage() {
     setIsPartnerAuthenticated(false);
     setSelectedBusinessId('');
     setCurrentBusiness(null);
-    setLoginPin('');
+    setLoginIdentifier('');
+    setLoginPassword('');
     setPartnerAuthError('');
     try {
       localStorage.removeItem('venoapp_partner_session');
@@ -475,7 +486,7 @@ export default function PartnerPortalPage() {
               Portal do Parceiro
             </h1>
             <p className="text-xs text-purple-200/70">
-              Identifique sua empresa para gerenciar cupons de desconto, visualizar métricas de acessos e editar seu perfil comercial.
+              Acesso exclusivo para lojistas e anunciantes. Digite o E-mail ou Usuário e a Senha cadastrados para gerenciar seu negócio.
             </p>
           </div>
 
@@ -489,44 +500,38 @@ export default function PartnerPortalPage() {
 
             <div>
               <label className="block text-xs font-bold text-purple-200 mb-1.5 uppercase tracking-wider">
-                Selecione sua Empresa
+                E-mail ou Usuário do Lojista
               </label>
-              <select
-                value={loginBusinessId}
-                onChange={(e) => setLoginBusinessId(e.target.value)}
+              <input
+                type="text"
+                value={loginIdentifier}
+                onChange={(e) => setLoginIdentifier(e.target.value)}
+                placeholder="ex: contato@pizzaria.com.br ou sabor"
                 required
-                className="w-full bg-[#250a41] border border-purple-700/60 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-400 cursor-pointer"
-              >
-                <option value="" className="bg-[#1b0730] text-purple-300">
-                  -- Selecione seu estabelecimento --
-                </option>
-                {businesses.map((b) => (
-                  <option key={b.id} value={b.id} className="bg-[#1b0730] text-white">
-                    {b.name} ({b.category || 'Comércio Local'})
-                  </option>
-                ))}
-              </select>
+                autoFocus
+                className="w-full bg-[#250a41] border border-purple-700/60 rounded-xl px-4 py-3 text-sm text-white placeholder-purple-400/40 focus:outline-none focus:ring-2 focus:ring-purple-400"
+              />
             </div>
 
             <div>
               <label className="block text-xs font-bold text-purple-200 mb-1.5 uppercase tracking-wider">
-                PIN de Acesso do Lojista
+                Senha de Acesso
               </label>
               <div className="relative">
                 <input
-                  type={showPartnerPin ? 'text' : 'password'}
-                  value={loginPin}
-                  onChange={(e) => setLoginPin(e.target.value)}
-                  placeholder="Digite o PIN (Ex: 1234)..."
+                  type={showPassword ? 'text' : 'password'}
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  placeholder="Digite sua senha..."
                   required
                   className="w-full bg-[#250a41] border border-purple-700/60 rounded-xl px-4 py-3 text-sm text-white placeholder-purple-400/40 focus:outline-none focus:ring-2 focus:ring-purple-400 font-mono tracking-wider pr-10"
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPartnerPin(!showPartnerPin)}
+                  onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-purple-400 hover:text-purple-200 transition"
                 >
-                  {showPartnerPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
@@ -543,16 +548,17 @@ export default function PartnerPortalPage() {
 
             <button
               type="submit"
-              className="w-full bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-sm py-3 rounded-xl shadow-lg shadow-purple-950 transition transform hover:scale-[1.01] cursor-pointer flex items-center justify-center gap-2"
+              disabled={loggingIn}
+              className="w-full bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-sm py-3 rounded-xl shadow-lg shadow-purple-950 transition transform hover:scale-[1.01] cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
             >
               <Key className="w-4 h-4" />
-              <span>Acessar Painel da Empresa</span>
+              <span>{loggingIn ? 'Validando Acesso...' : 'Acessar Painel da Empresa'}</span>
             </button>
           </form>
 
           <div className="pt-2 border-t border-purple-900/40 text-center space-y-3">
             <p className="text-[11px] text-purple-400/70">
-              PIN de Demonstração: <span className="font-mono font-bold text-purple-200">1234</span> ou <span className="font-mono font-bold text-purple-200">2026</span>
+              Acessos de demonstração: <span className="font-mono font-bold text-purple-200">sabor</span> / <span className="font-mono font-bold text-purple-200">123456</span> ou <span className="font-mono font-bold text-purple-200">bella</span> / <span className="font-mono font-bold text-purple-200">123456</span>
             </p>
             <div className="flex flex-col gap-2">
               <Link

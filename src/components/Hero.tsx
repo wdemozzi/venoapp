@@ -37,6 +37,8 @@ export const Hero: React.FC<HeroProps> = ({
           alt={`Eu Amo ${cityName}`}
           fill
           priority
+          sizes="100vw"
+          quality={85}
           className="object-cover object-right md:object-center"
         />
 

@@ -39,6 +39,11 @@ import {
   Upload,
   ImageIcon,
   Tag,
+  Lock,
+  Key,
+  LogOut,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import InstagramIcon from '@/components/InstagramIcon';
 import {
@@ -70,6 +75,55 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<'city' | 'events' | 'businesses' | 'offers' | 'shortcuts' | 'albums' | 'banners' | 'subscriptions' | 'franchises'>('events');
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  // Security Authentication Lock State
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [authChecked, setAuthChecked] = useState<boolean>(false);
+  const [pinInput, setPinInput] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
+
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const saved = window.localStorage.getItem('venoapp_admin_auth');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          // Valid for 7 days
+          if (Date.now() - parsed.timestamp < 7 * 24 * 60 * 60 * 1000) {
+            setIsAuthenticated(true);
+          }
+        }
+      }
+    } catch {}
+    setAuthChecked(true);
+  }, []);
+
+  const handleAdminLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanPin = pinInput.trim().toLowerCase();
+    const validPins = ['admin2026', 'veno2026', '2026', 'admin'];
+    if (validPins.includes(cleanPin)) {
+      setIsAuthenticated(true);
+      setAuthError('');
+      if (rememberMe) {
+        try {
+          window.localStorage.setItem('venoapp_admin_auth', JSON.stringify({ timestamp: Date.now() }));
+        } catch {}
+      }
+    } else {
+      setAuthError('PIN ou Senha administrativa incorreta. Tente novamente.');
+    }
+  };
+
+  const handleAdminLogout = () => {
+    setIsAuthenticated(false);
+    setPinInput('');
+    try {
+      window.localStorage.removeItem('venoapp_admin_auth');
+    } catch {}
+  };
 
   // Multi-tenant city states
   const [availableCities, setAvailableCities] = useState<City[]>(DEFAULT_CITIES);
@@ -866,6 +920,96 @@ export default function AdminPage() {
     }
   };
 
+  if (!isAuthenticated && authChecked) {
+    return (
+      <div className="min-h-screen bg-[#0f041c] text-slate-100 flex flex-col items-center justify-center p-4 font-sans relative overflow-hidden">
+        {/* Background ambient glow */}
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-purple-600/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-20 -right-20 w-80 h-80 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="w-full max-w-md bg-[#18062b] border border-purple-800/50 rounded-3xl p-8 shadow-2xl relative z-10 space-y-6">
+          <div className="text-center space-y-2">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-purple-900/40 border border-purple-700/50 flex items-center justify-center text-purple-300 shadow-inner">
+              <Lock className="w-7 h-7 text-purple-400" />
+            </div>
+            <h1 className="text-2xl font-black text-white tracking-tight">
+              Acesso Administrativo
+            </h1>
+            <p className="text-xs text-purple-200/70">
+              Painel de Gestão e Franquias do Venoapp. Digite o PIN ou Senha Master para continuar.
+            </p>
+          </div>
+
+          <form onSubmit={handleAdminLogin} className="space-y-4">
+            {authError && (
+              <div className="bg-rose-950/80 border border-rose-800 text-rose-200 text-xs px-3.5 py-2.5 rounded-xl flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{authError}</span>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-bold text-purple-200 mb-1.5 uppercase tracking-wider">
+                PIN / Senha de Administrador
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value)}
+                  placeholder="Digite a senha ou PIN..."
+                  autoFocus
+                  required
+                  className="w-full bg-[#250a41] border border-purple-700/60 rounded-xl px-4 py-3 text-sm text-white placeholder-purple-400/40 focus:outline-none focus:ring-2 focus:ring-purple-400 font-mono tracking-wider pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-purple-400 hover:text-purple-200 transition"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <label className="flex items-center gap-2 text-xs text-purple-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="w-4 h-4 rounded border-purple-700 bg-purple-950/60 text-purple-600 focus:ring-purple-500"
+              />
+              <span>Lembrar acesso neste dispositivo</span>
+            </label>
+
+            <button
+              type="submit"
+              className="w-full bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-sm py-3 rounded-xl shadow-lg shadow-purple-950 transition transform hover:scale-[1.01] cursor-pointer flex items-center justify-center gap-2"
+            >
+              <Key className="w-4 h-4" />
+              <span>Desbloquear Painel</span>
+            </button>
+          </form>
+
+          <div className="pt-2 border-t border-purple-900/40 text-center space-y-3">
+            <p className="text-[11px] text-purple-400/70">
+              PIN Master Padrão: <span className="font-mono font-bold text-purple-200">admin2026</span> ou <span className="font-mono font-bold text-purple-200">2026</span>
+            </p>
+            <div>
+              <Link
+                href="/"
+                className="inline-flex items-center gap-1.5 text-xs text-purple-300 hover:text-white hover:underline transition"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Voltar ao Portal Público</span>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#0f041c] text-slate-100 flex flex-col font-sans">
       {/* Toast Notification */}
@@ -959,6 +1103,15 @@ export default function AdminPage() {
               className="p-2 rounded-xl bg-purple-950/80 hover:bg-purple-900/80 border border-purple-800/40 text-purple-300 hover:text-white transition cursor-pointer"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-purple-400' : ''}`} />
+            </button>
+
+            <button
+              onClick={handleAdminLogout}
+              title="Bloquear painel e sair"
+              className="p-2 rounded-xl bg-rose-950/70 hover:bg-rose-900/80 border border-rose-800/50 text-rose-300 hover:text-white transition cursor-pointer flex items-center gap-1.5 text-xs font-semibold shadow-sm"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Bloquear</span>
             </button>
           </div>
         </div>

@@ -101,7 +101,7 @@ export const FeaturedEvents: React.FC<FeaturedEventsProps> = ({ events }) => {
     : defaultEvents;
 
   return (
-    <section>
+    <section id="eventos" className="scroll-mt-24">
       {/* Header */}
       <div className="flex items-center justify-between mb-3.5">
         <div className="flex items-center gap-2">
@@ -136,6 +136,7 @@ export const FeaturedEvents: React.FC<FeaturedEventsProps> = ({ events }) => {
                 src={event.image}
                 alt={event.title}
                 fill
+                sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 25vw"
                 className="object-cover group-hover:scale-105 transition-transform duration-300"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20" />

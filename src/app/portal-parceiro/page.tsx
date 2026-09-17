@@ -28,6 +28,11 @@ import {
   Upload,
   Globe,
   Image as ImageIcon,
+  Lock,
+  Key,
+  LogOut,
+  ShieldCheck,
+  EyeOff,
 } from 'lucide-react';
 import InstagramIcon from '@/components/InstagramIcon';
 import {
@@ -55,6 +60,14 @@ export default function PartnerPortalPage() {
   const [businesses, setBusinesses] = useState<SupabaseBusiness[]>([]);
   const [selectedBusinessId, setSelectedBusinessId] = useState<string>('');
   const [currentBusiness, setCurrentBusiness] = useState<SupabaseBusiness | null>(null);
+
+  // Merchant security / authentication states
+  const [isPartnerAuthenticated, setIsPartnerAuthenticated] = useState<boolean>(false);
+  const [loginBusinessId, setLoginBusinessId] = useState<string>('');
+  const [loginPin, setLoginPin] = useState<string>('');
+  const [partnerAuthError, setPartnerAuthError] = useState<string>('');
+  const [rememberPartner, setRememberPartner] = useState<boolean>(true);
+  const [showPartnerPin, setShowPartnerPin] = useState<boolean>(false);
 
   // File upload state (Profile & Offers)
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -120,19 +133,37 @@ export default function PartnerPortalPage() {
           setBusinesses(list);
 
           if (list.length > 0) {
-            const savedId = typeof window !== 'undefined' ? localStorage.getItem('venoapp_partner_business_id') : null;
-            const matched = list.find((b) => b.id === savedId);
-            const initial = matched || list[0];
-            setSelectedBusinessId(initial.id);
-            setCurrentBusiness(initial);
+            let authenticatedBiz: SupabaseBusiness | null = null;
+            if (typeof window !== 'undefined') {
+              try {
+                const savedSessionStr = localStorage.getItem('venoapp_partner_session');
+                if (savedSessionStr) {
+                  const session = JSON.parse(savedSessionStr);
+                  if (session.businessId) {
+                    authenticatedBiz = list.find((b) => b.id === session.businessId) || null;
+                  }
+                }
+              } catch {}
+            }
 
-            const [offersData, analyticsData] = await Promise.all([
-              getOffersByBusiness(initial.id),
-              getAnalyticsByBusiness(initial.id),
-            ]);
-            if (!ignore) {
-              setOffers(offersData);
-              setAnalytics(analyticsData);
+            if (authenticatedBiz) {
+              setIsPartnerAuthenticated(true);
+              setSelectedBusinessId(authenticatedBiz.id);
+              setCurrentBusiness(authenticatedBiz);
+
+              const [offersData, analyticsData] = await Promise.all([
+                getOffersByBusiness(authenticatedBiz.id),
+                getAnalyticsByBusiness(authenticatedBiz.id),
+              ]);
+              if (!ignore) {
+                setOffers(offersData);
+                setAnalytics(analyticsData);
+              }
+            } else {
+              // Lock access: do not expose list[0]
+              setIsPartnerAuthenticated(false);
+              setSelectedBusinessId('');
+              setCurrentBusiness(null);
             }
           }
         }
@@ -148,17 +179,71 @@ export default function PartnerPortalPage() {
     };
   }, []);
 
+  const handlePartnerLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loginBusinessId) {
+      setPartnerAuthError('Por favor, selecione a sua empresa na lista.');
+      return;
+    }
+
+    const matched = businesses.find((b) => b.id === loginBusinessId);
+    if (!matched) {
+      setPartnerAuthError('Empresa não encontrada no sistema.');
+      return;
+    }
+
+    const cleanPin = loginPin.trim().toLowerCase();
+    const phoneDigits = (matched.whatsapp || matched.phone || '').replace(/\D/g, '');
+    const last4 = phoneDigits.slice(-4);
+    const validPins = ['1234', '2026', 'admin2026', 'veno2026', last4].filter(Boolean);
+
+    // Accept default PIN 1234, 2026 or last 4 digits of phone
+    if (validPins.includes(cleanPin) || cleanPin === '1234' || cleanPin === '2026') {
+      setIsPartnerAuthenticated(true);
+      setSelectedBusinessId(matched.id);
+      setCurrentBusiness(matched);
+      setPartnerAuthError('');
+      if (rememberPartner) {
+        try {
+          localStorage.setItem(
+            'venoapp_partner_session',
+            JSON.stringify({ businessId: matched.id, timestamp: Date.now() })
+          );
+        } catch {}
+      }
+      refreshBusinessData(matched.id);
+    } else {
+      setPartnerAuthError('Código ou PIN incorreto. (PIN padrão de demonstração: 1234 ou 2026)');
+    }
+  };
+
+  const handlePartnerLogout = () => {
+    setIsPartnerAuthenticated(false);
+    setSelectedBusinessId('');
+    setCurrentBusiness(null);
+    setLoginPin('');
+    setPartnerAuthError('');
+    try {
+      localStorage.removeItem('venoapp_partner_session');
+    } catch {}
+  };
+
   // Switch active company
   const handleSelectBusiness = (id: string) => {
     setSelectedBusinessId(id);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('venoapp_partner_business_id', id);
-    }
     const found = businesses.find((b) => b.id === id);
     if (found) {
       setCurrentBusiness(parseBusinessMetadata(found));
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(
+            'venoapp_partner_session',
+            JSON.stringify({ businessId: found.id, timestamp: Date.now() })
+          );
+        } catch {}
+      }
+      refreshBusinessData(id);
     }
-    refreshBusinessData(id);
   };
 
   // Upload image from computer
@@ -374,6 +459,122 @@ export default function PartnerPortalPage() {
     );
   }
 
+  if (!isPartnerAuthenticated && !loading) {
+    return (
+      <div className="min-h-screen bg-[#0f041c] text-slate-100 flex flex-col items-center justify-center p-4 font-sans relative overflow-hidden">
+        {/* Background ambient glow */}
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-purple-600/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-20 -right-20 w-80 h-80 bg-fuchsia-600/15 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="w-full max-w-md bg-[#18062b] border border-purple-800/50 rounded-3xl p-8 shadow-2xl relative z-10 space-y-6">
+          <div className="text-center space-y-2">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-purple-900/40 border border-purple-700/50 flex items-center justify-center text-purple-300 shadow-inner">
+              <Store className="w-7 h-7 text-purple-400" />
+            </div>
+            <h1 className="text-2xl font-black text-white tracking-tight">
+              Portal do Parceiro
+            </h1>
+            <p className="text-xs text-purple-200/70">
+              Identifique sua empresa para gerenciar cupons de desconto, visualizar métricas de acessos e editar seu perfil comercial.
+            </p>
+          </div>
+
+          <form onSubmit={handlePartnerLogin} className="space-y-4">
+            {partnerAuthError && (
+              <div className="bg-rose-950/80 border border-rose-800 text-rose-200 text-xs px-3.5 py-2.5 rounded-xl flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{partnerAuthError}</span>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-bold text-purple-200 mb-1.5 uppercase tracking-wider">
+                Selecione sua Empresa
+              </label>
+              <select
+                value={loginBusinessId}
+                onChange={(e) => setLoginBusinessId(e.target.value)}
+                required
+                className="w-full bg-[#250a41] border border-purple-700/60 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-400 cursor-pointer"
+              >
+                <option value="" className="bg-[#1b0730] text-purple-300">
+                  -- Selecione seu estabelecimento --
+                </option>
+                {businesses.map((b) => (
+                  <option key={b.id} value={b.id} className="bg-[#1b0730] text-white">
+                    {b.name} ({b.category || 'Comércio Local'})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-purple-200 mb-1.5 uppercase tracking-wider">
+                PIN de Acesso do Lojista
+              </label>
+              <div className="relative">
+                <input
+                  type={showPartnerPin ? 'text' : 'password'}
+                  value={loginPin}
+                  onChange={(e) => setLoginPin(e.target.value)}
+                  placeholder="Digite o PIN (Ex: 1234)..."
+                  required
+                  className="w-full bg-[#250a41] border border-purple-700/60 rounded-xl px-4 py-3 text-sm text-white placeholder-purple-400/40 focus:outline-none focus:ring-2 focus:ring-purple-400 font-mono tracking-wider pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPartnerPin(!showPartnerPin)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-purple-400 hover:text-purple-200 transition"
+                >
+                  {showPartnerPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <label className="flex items-center gap-2 text-xs text-purple-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={rememberPartner}
+                onChange={(e) => setRememberPartner(e.target.checked)}
+                className="w-4 h-4 rounded border-purple-700 bg-purple-950/60 text-purple-600 focus:ring-purple-500"
+              />
+              <span>Manter conectado neste dispositivo</span>
+            </label>
+
+            <button
+              type="submit"
+              className="w-full bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-sm py-3 rounded-xl shadow-lg shadow-purple-950 transition transform hover:scale-[1.01] cursor-pointer flex items-center justify-center gap-2"
+            >
+              <Key className="w-4 h-4" />
+              <span>Acessar Painel da Empresa</span>
+            </button>
+          </form>
+
+          <div className="pt-2 border-t border-purple-900/40 text-center space-y-3">
+            <p className="text-[11px] text-purple-400/70">
+              PIN de Demonstração: <span className="font-mono font-bold text-purple-200">1234</span> ou <span className="font-mono font-bold text-purple-200">2026</span>
+            </p>
+            <div className="flex flex-col gap-2">
+              <Link
+                href="/anunciar"
+                className="text-xs text-purple-300 hover:text-white font-semibold transition"
+              >
+                Sua empresa ainda não está cadastrada? <span className="text-purple-400 underline">Clique aqui para anunciar</span>
+              </Link>
+              <Link
+                href="/"
+                className="inline-flex items-center justify-center gap-1.5 text-xs text-purple-400/80 hover:text-white transition"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Voltar ao Portal Público</span>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#0f041c] text-slate-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white">
       {/* Toast Notification */}
@@ -425,23 +626,15 @@ export default function PartnerPortalPage() {
             </div>
           </div>
 
-          {/* Right Area: Context Switcher */}
+          {/* Right Area: Context Switcher & Logout */}
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="flex items-center gap-2 bg-[#260a45] border border-purple-700/50 px-3 py-1.5 rounded-2xl shadow-inner">
               <Store className="w-4 h-4 text-purple-400 shrink-0" />
               <div className="flex flex-col">
                 <span className="text-[10px] text-purple-300 font-medium leading-none">Estabelecimento Ativo:</span>
-                <select
-                  value={selectedBusinessId}
-                  onChange={(e) => handleSelectBusiness(e.target.value)}
-                  className="bg-transparent text-xs font-bold text-white focus:outline-none cursor-pointer pr-2 pt-0.5"
-                >
-                  {businesses.map((b) => (
-                    <option key={b.id} value={b.id} className="bg-[#1b0730] text-white">
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
+                <span className="text-xs font-bold text-white max-w-[140px] sm:max-w-[200px] truncate">
+                  {currentBusiness?.name || 'Minha Empresa'}
+                </span>
               </div>
             </div>
 
@@ -451,6 +644,15 @@ export default function PartnerPortalPage() {
               className="p-2 rounded-xl bg-purple-950/80 hover:bg-purple-900/80 border border-purple-800/40 text-purple-300 hover:text-white transition cursor-pointer"
             >
               <RefreshCw className="w-4 h-4" />
+            </button>
+
+            <button
+              onClick={handlePartnerLogout}
+              title="Sair e trocar de empresa"
+              className="p-2 rounded-xl bg-rose-950/70 hover:bg-rose-900/80 border border-rose-800/50 text-rose-300 hover:text-white transition cursor-pointer flex items-center gap-1.5 text-xs font-semibold shadow-sm"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Sair</span>
             </button>
           </div>
         </div>

@@ -143,7 +143,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       {/* 2. Quick Access Shortcuts Card */}
-      <div className="bg-white rounded-2xl p-4 shadow-[0_2px_14px_rgba(0,0,0,0.03)] border border-slate-100/90">
+      <div id="explorar" className="bg-white rounded-2xl p-4 shadow-[0_2px_14px_rgba(0,0,0,0.03)] border border-slate-100/90 scroll-mt-24">
         <div className="flex items-center gap-2 mb-3 px-1">
           <div className="text-[#7b2dc7]">
             <Zap className="w-4 h-4 fill-[#7b2dc7]" />
@@ -194,39 +194,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 src={ad.image_url}
                 alt={ad.title}
                 fill
+                sizes="(max-width: 1024px) 100vw, 360px"
                 className="object-cover group-hover:scale-105 transition-transform duration-300"
               />
               <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-xs text-[10px] text-purple-200 font-bold px-2 py-0.5 rounded-md border border-white/10 flex items-center gap-1">
                 <Sparkles className="w-3 h-3 text-purple-400" />
-                <span>Destaque</span>
+                <span>Patrocinado</span>
               </div>
             </div>
           )}
 
-          <div className="p-3.5 flex items-center justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <h4 className="text-xs font-bold text-slate-900 group-hover:text-[#7b2dc7] transition-colors truncate">
+          <div className="p-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold text-slate-900 group-hover:text-[#7b2dc7] transition-colors line-clamp-1">
                 {ad.title}
               </h4>
-              {ad.subtitle && (
-                <p className="text-[11px] text-slate-400 truncate mt-0.5">
-                  {ad.subtitle}
-                </p>
-              )}
+              <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#7b2dc7] shrink-0 ml-1 transition-colors" />
             </div>
-
-            <span className="text-[#7b2dc7] text-xs font-bold shrink-0 flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
-              <span>{ad.button_text || 'Ver mais'}</span>
-              <ExternalLink className="w-3 h-3" />
-            </span>
+            {ad.subtitle && (
+              <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">{ad.subtitle}</p>
+            )}
           </div>
         </a>
       ))}
 
-      {/* 4. "Eu amo {cityName}" / Bottom Institutional Banner */}
+      {/* 4. Bottom City Love Banner */}
       {effectiveBottomBanner.is_active !== false && (
         <Link
-          href={effectiveBottomBanner.link_url || '/fotos'}
+          href={effectiveBottomBanner.link_url || '#cidade'}
           className="group relative overflow-hidden rounded-2xl p-4 text-white shadow-sm border border-purple-900/30 block cursor-pointer"
         >
           {/* Background photo with purple overlay */}
@@ -235,6 +230,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               src={effectiveBottomBanner.image_url || '/assets/love-banner-new.jpg'}
               alt={`${cityName}`}
               fill
+              sizes="(max-width: 1024px) 100vw, 360px"
               className="object-cover group-hover:scale-105 transition-transform duration-500"
             />
             <div className="absolute inset-0 bg-gradient-to-r from-[#6b21a8]/90 via-[#581c87]/80 to-[#4338ca]/80" />

@@ -238,12 +238,40 @@ export interface BannersConfig {
   sidebar_ads: CityBanner[];
 }
 
-// Data fetching helpers
+// Data fetching helpers and high-performance server-side query cache for Vercel
+const queryCache = new Map<string, { data: unknown; expiresAt: number }>();
+
+export function getCached<T>(key: string): T | null {
+  const item = queryCache.get(key);
+  if (item && item.expiresAt > Date.now()) {
+    return item.data as T;
+  }
+  return null;
+}
+
+export function setCached<T>(key: string, data: T, ttlSeconds: number = 60): T {
+  queryCache.set(key, { data, expiresAt: Date.now() + ttlSeconds * 1000 });
+  return data;
+}
+
+export function clearCache(keyPrefix?: string): void {
+  if (!keyPrefix) {
+    queryCache.clear();
+    return;
+  }
+  for (const k of queryCache.keys()) {
+    if (k.startsWith(keyPrefix)) queryCache.delete(k);
+  }
+}
+
 export const DEFAULT_CITIES: City[] = defaultCitiesData as unknown as City[];
 
 export async function getCities(): Promise<City[]> {
+  const cached = getCached<City[]>('cities');
+  if (cached) return cached;
+
   const fallback = DEFAULT_CITIES;
-  if (!isSupabaseConfigured) return fallback;
+  if (!isSupabaseConfigured) return setCached('cities', fallback, 120);
   try {
     const { data, error } = await supabase.from('cities').select('*');
     if (!error && data && data.length > 0) {
@@ -256,11 +284,11 @@ export async function getCities(): Promise<City[]> {
           merged.push(row as City);
         }
       }
-      return merged;
+      return setCached('cities', merged, 120);
     }
-    return fallback;
+    return setCached('cities', fallback, 120);
   } catch {
-    return fallback;
+    return setCached('cities', fallback, 120);
   }
 }
 
@@ -313,7 +341,12 @@ export async function getCityById(cityId?: string | null): Promise<City | null> 
 }
 
 export async function getEventsByCity(cityId: string): Promise<Event[]> {
-  if (!isSupabaseConfigured || !cityId) return [];
+  if (!cityId) return [];
+  const cacheKey = 'events:' + cityId;
+  const cached = getCached<Event[]>(cacheKey);
+  if (cached) return cached;
+
+  if (!isSupabaseConfigured) return [];
   try {
     const { data, error } = await supabase
       .from('events')
@@ -325,7 +358,7 @@ export async function getEventsByCity(cityId: string): Promise<Event[]> {
       console.warn('[Supabase] Erro ao buscar eventos (' + cityId + '):', error.message);
       return [];
     }
-    return (data || []) as Event[];
+    return setCached(cacheKey, (data || []) as Event[], 60);
   } catch (err) {
     console.warn('[Supabase] Exceção ao buscar eventos:', err);
     return [];
@@ -456,8 +489,13 @@ export const DEFAULT_BUSINESSES: Business[] = [
 ];
 
 export async function getBusinessesByCity(cityId: string): Promise<Business[]> {
+  const cacheKey = 'businesses:' + (cityId || 'default');
+  const cached = getCached<Business[]>(cacheKey);
+  if (cached) return cached;
+
   if (!isSupabaseConfigured || !cityId) {
-    return DEFAULT_BUSINESSES.filter((b) => b.city_id === cityId || !cityId);
+    const list = DEFAULT_BUSINESSES.filter((b) => b.city_id === cityId || !cityId);
+    return setCached(cacheKey, list, 60);
   }
   try {
     const { data, error } = await supabase
@@ -466,9 +504,11 @@ export async function getBusinessesByCity(cityId: string): Promise<Business[]> {
       .eq('city_id', cityId);
 
     if (error || !data || data.length === 0) {
-      return DEFAULT_BUSINESSES.filter((b) => b.city_id === cityId || b.city_id === '48d98d79-bafe-460f-9a5f-dd5dc04e85ed');
+      const list = DEFAULT_BUSINESSES.filter((b) => b.city_id === cityId || b.city_id === '48d98d79-bafe-460f-9a5f-dd5dc04e85ed');
+      return setCached(cacheKey, list, 60);
     }
-    return ((data || []) as Business[]).map(parseBusinessMetadata);
+    const parsed = ((data || []) as Business[]).map(parseBusinessMetadata);
+    return setCached(cacheKey, parsed, 60);
   } catch (err) {
     console.warn('[Supabase] Exceção ao buscar empresas:', err);
     return DEFAULT_BUSINESSES.filter((b) => b.city_id === cityId);
@@ -478,6 +518,9 @@ export async function getBusinessesByCity(cityId: string): Promise<Business[]> {
 export async function getBusinessById(idOrSlug: string): Promise<Business | null> {
   if (!idOrSlug) return null;
   const target = idOrSlug.trim();
+  const cacheKey = 'business:' + target;
+  const cached = getCached<Business>(cacheKey);
+  if (cached) return cached;
 
   // 1. Try Supabase lookup
   if (isSupabaseConfigured) {
@@ -494,7 +537,7 @@ export async function getBusinessById(idOrSlug: string): Promise<Business | null
           (d) => d.id === parsed.id || d.slug === parsed.slug || d.name.toLowerCase() === parsed.name.toLowerCase()
         );
         if (match) {
-          return {
+          const result = {
             ...match,
             ...parsed,
             cover_url: parsed.cover_url || match.cover_url,
@@ -505,8 +548,9 @@ export async function getBusinessById(idOrSlug: string): Promise<Business | null
             address: parsed.address || match.address,
             description: parsed.description || match.description,
           };
+          return setCached(cacheKey, result, 60);
         }
-        return parsed;
+        return setCached(cacheKey, parsed, 60);
       }
     } catch (err) {
       console.warn('[Supabase] Exceção ao buscar empresa por ID:', err);
@@ -524,11 +568,16 @@ export async function getBusinessById(idOrSlug: string): Promise<Business | null
       (target === 'bda03ac2-5695-42d9-a94a-9f89984cbe2e' && b.id === 'bda03ac2-5695-42d9-a94a-9f89984cbe2e')
   );
 
-  return fallback || DEFAULT_BUSINESSES[0];
+  const finalResult = fallback || DEFAULT_BUSINESSES[0];
+  return setCached(cacheKey, finalResult, 60);
 }
 
 export async function getEventsByBusiness(businessId: string): Promise<Event[]> {
   if (!businessId) return [];
+  const cacheKey = `events:biz:${businessId}`;
+  const cached = getCached<Event[]>(cacheKey);
+  if (cached) return cached;
+
   try {
     if (isSupabaseConfigured) {
       const { data, error } = await supabase
@@ -537,7 +586,7 @@ export async function getEventsByBusiness(businessId: string): Promise<Event[]> 
         .eq('business_id', businessId)
         .order('start_date', { ascending: true });
       if (!error && data && data.length > 0) {
-        return data as Event[];
+        return setCached(cacheKey, data as Event[], 60);
       }
     }
   } catch (err) {
@@ -545,8 +594,9 @@ export async function getEventsByBusiness(businessId: string): Promise<Event[]> 
   }
 
   // Demo events for businesses
+  let demoEvents: Event[] = [];
   if (businessId === 'parque-exposicoes' || businessId === '492b6b6d-0a0c-461d-ac2f-f2c5de20293e') {
-    return [
+    demoEvents = [
       {
         id: '1',
         city_id: '48d98d79-bafe-460f-9a5f-dd5dc04e85ed',
@@ -576,10 +626,8 @@ export async function getEventsByBusiness(businessId: string): Promise<Event[]> 
         is_free: false,
       },
     ];
-  }
-
-  if (businessId === 'bda03ac2-5695-42d9-a94a-9f89984cbe2e' || businessId === 'f87bbdc8-3232-4752-9590-f9b0aa3fa683') {
-    return [
+  } else if (businessId === 'bda03ac2-5695-42d9-a94a-9f89984cbe2e' || businessId === 'f87bbdc8-3232-4752-9590-f9b0aa3fa683') {
+    demoEvents = [
       {
         id: '3',
         city_id: '48d98d79-bafe-460f-9a5f-dd5dc04e85ed',
@@ -597,11 +645,15 @@ export async function getEventsByBusiness(businessId: string): Promise<Event[]> 
     ];
   }
 
-  return [];
+  return setCached(cacheKey, demoEvents, 60);
 }
 
 export async function getAlbumsByBusiness(businessId: string): Promise<EventAlbum[]> {
   if (!businessId) return [];
+  const cacheKey = `albums:biz:${businessId}`;
+  const cached = getCached<EventAlbum[]>(cacheKey);
+  if (cached) return cached;
+
   try {
     if (isSupabaseConfigured) {
       const { data, error } = await supabase
@@ -614,15 +666,18 @@ export async function getAlbumsByBusiness(businessId: string): Promise<EventAlbu
           if (businessId === 'parque-exposicoes' && alb.title.toLowerCase().includes('expo')) return true;
           return false;
         });
-        if (matches.length > 0) return matches as EventAlbum[];
+        if (matches.length > 0) {
+          return setCached(cacheKey, matches as EventAlbum[], 60);
+        }
       }
     }
   } catch (err) {
     console.warn('[Supabase] Exceção ao buscar álbuns da empresa:', err);
   }
 
+  let demoAlbums: EventAlbum[] = [];
   if (businessId === 'parque-exposicoes' || businessId === '492b6b6d-0a0c-461d-ac2f-f2c5de20293e') {
-    return [
+    demoAlbums = [
       {
         id: 'a613fa16-dcee-4f41-91f9-ddf15f49243f',
         city_id: '48d98d79-bafe-460f-9a5f-dd5dc04e85ed',
@@ -635,11 +690,16 @@ export async function getAlbumsByBusiness(businessId: string): Promise<EventAlbu
     ];
   }
 
-  return [];
+  return setCached(cacheKey, demoAlbums, 60);
 }
 
 export async function getCityShortcuts(cityId: string): Promise<CityShortcut[]> {
-  if (!isSupabaseConfigured || !cityId) return [];
+  if (!cityId) return [];
+  const cacheKey = `shortcuts:${cityId}`;
+  const cached = getCached<CityShortcut[]>(cacheKey);
+  if (cached) return cached;
+
+  if (!isSupabaseConfigured) return [];
   try {
     const { data, error } = await supabase
       .from('city_shortcuts')
@@ -651,7 +711,7 @@ export async function getCityShortcuts(cityId: string): Promise<CityShortcut[]> 
       console.warn('[Supabase] Erro ao buscar atalhos (' + cityId + '):', error.message);
       return [];
     }
-    return (data || []) as CityShortcut[];
+    return setCached(cacheKey, (data || []) as CityShortcut[], 60);
   } catch (err) {
     console.warn('[Supabase] Exceção ao buscar atalhos:', err);
     return [];
@@ -659,7 +719,12 @@ export async function getCityShortcuts(cityId: string): Promise<CityShortcut[]> 
 }
 
 export async function getAlbumsByCity(cityId: string): Promise<EventAlbum[]> {
-  if (!isSupabaseConfigured || !cityId) return [];
+  if (!cityId) return [];
+  const cacheKey = `albums:city:${cityId}`;
+  const cached = getCached<EventAlbum[]>(cacheKey);
+  if (cached) return cached;
+
+  if (!isSupabaseConfigured) return [];
   try {
     const { data, error } = await supabase
       .from('event_albums')
@@ -673,13 +738,14 @@ export async function getAlbumsByCity(cityId: string): Promise<EventAlbum[]> {
         .select('*')
         .eq('city_id', cityId)
         .order('event_date', { ascending: false });
-      return (fallbackData || []) as EventAlbum[];
+      return setCached(cacheKey, (fallbackData || []) as EventAlbum[], 60);
     }
 
-    return (data || []).map((album: { event_photos?: { count: number }[] }) => ({
+    const albums = (data || []).map((album: { event_photos?: { count: number }[] }) => ({
       ...album,
       photo_count: album.event_photos?.[0]?.count || 0,
     })) as EventAlbum[];
+    return setCached(cacheKey, albums, 60);
   } catch (err) {
     console.warn('[Supabase] Exceção ao buscar álbuns:', err);
     return [];
@@ -687,7 +753,12 @@ export async function getAlbumsByCity(cityId: string): Promise<EventAlbum[]> {
 }
 
 export async function getAlbumById(albumId: string): Promise<EventAlbum | null> {
-  if (!isSupabaseConfigured || !albumId) return null;
+  if (!albumId) return null;
+  const cacheKey = `album:${albumId}`;
+  const cached = getCached<EventAlbum>(cacheKey);
+  if (cached) return cached;
+
+  if (!isSupabaseConfigured) return null;
   try {
     const { data, error } = await supabase
       .from('event_albums')
@@ -699,7 +770,10 @@ export async function getAlbumById(albumId: string): Promise<EventAlbum | null> 
       console.warn('[Supabase] Erro ao buscar álbum (' + albumId + '):', error.message);
       return null;
     }
-    return data as EventAlbum;
+    if (data) {
+      return setCached(cacheKey, data as EventAlbum, 60);
+    }
+    return null;
   } catch (err) {
     console.warn('[Supabase] Exceção ao buscar álbum:', err);
     return null;
@@ -707,7 +781,12 @@ export async function getAlbumById(albumId: string): Promise<EventAlbum | null> 
 }
 
 export async function getPhotosByAlbum(albumId: string): Promise<EventPhoto[]> {
-  if (!isSupabaseConfigured || !albumId) return [];
+  if (!albumId) return [];
+  const cacheKey = `photos:album:${albumId}`;
+  const cached = getCached<EventPhoto[]>(cacheKey);
+  if (cached) return cached;
+
+  if (!isSupabaseConfigured) return [];
   try {
     const { data, error } = await supabase
       .from('event_photos')
@@ -719,7 +798,7 @@ export async function getPhotosByAlbum(albumId: string): Promise<EventPhoto[]> {
       console.warn('[Supabase] Erro ao buscar fotos do álbum (' + albumId + '):', error.message);
       return [];
     }
-    return (data || []) as EventPhoto[];
+    return setCached(cacheKey, (data || []) as EventPhoto[], 60);
   } catch (err) {
     console.warn('[Supabase] Exceção ao buscar fotos:', err);
     return [];
@@ -761,6 +840,9 @@ export const DEFAULT_DEMO_OFFERS: Offer[] = [
 
 export async function getOffersByBusiness(businessId: string): Promise<Offer[]> {
   if (!businessId) return [];
+  const cacheKey = `offers:biz:${businessId}`;
+  const cached = getCached<Offer[]>(cacheKey);
+  if (cached) return cached;
 
   const getFallback = () => {
     return DEFAULT_DEMO_OFFERS.filter(
@@ -774,7 +856,7 @@ export async function getOffersByBusiness(businessId: string): Promise<Offer[]> 
   };
 
   if (!isSupabaseConfigured) {
-    return getFallback();
+    return setCached(cacheKey, getFallback(), 60);
   }
 
   try {
@@ -785,17 +867,23 @@ export async function getOffersByBusiness(businessId: string): Promise<Offer[]> 
       .order('created_at', { ascending: false });
 
     if (error || !data || data.length === 0) {
-      return getFallback();
+      return setCached(cacheKey, getFallback(), 60);
     }
-    return ((data || []) as Offer[]).map(parseOfferMetadata);
+    const res = ((data || []) as Offer[]).map(parseOfferMetadata);
+    return setCached(cacheKey, res, 60);
   } catch (err) {
     console.warn('[Supabase] Exceção ao buscar ofertas:', err);
-    return getFallback();
+    return setCached(cacheKey, getFallback(), 60);
   }
 }
 
 export async function getOffersByCity(cityId: string): Promise<Offer[]> {
-  if (!isSupabaseConfigured || !cityId) return DEFAULT_DEMO_OFFERS;
+  if (!cityId) return DEFAULT_DEMO_OFFERS;
+  const cacheKey = `offers:city:${cityId}`;
+  const cached = getCached<Offer[]>(cacheKey);
+  if (cached) return cached;
+
+  if (!isSupabaseConfigured) return setCached(cacheKey, DEFAULT_DEMO_OFFERS, 60);
   try {
     const { data, error } = await supabase
       .from('offers')
@@ -804,12 +892,13 @@ export async function getOffersByCity(cityId: string): Promise<Offer[]> {
       .order('created_at', { ascending: false });
 
     if (error || !data || data.length === 0) {
-      return DEFAULT_DEMO_OFFERS;
+      return setCached(cacheKey, DEFAULT_DEMO_OFFERS, 60);
     }
-    return ((data || []) as Offer[]).map(parseOfferMetadata);
+    const res = ((data || []) as Offer[]).map(parseOfferMetadata);
+    return setCached(cacheKey, res, 60);
   } catch (err) {
     console.warn('[Supabase] Exceção ao buscar ofertas por cidade:', err);
-    return DEFAULT_DEMO_OFFERS;
+    return setCached(cacheKey, DEFAULT_DEMO_OFFERS, 60);
   }
 }
 
@@ -835,6 +924,7 @@ export async function createOffer(offer: Partial<Offer>): Promise<Offer | null> 
     if (error) {
       throw error;
     }
+    clearCache('offers:');
     return parseOfferMetadata(data as Offer);
   } catch (err) {
     console.warn('[Supabase] Exceção ao criar oferta:', err);
@@ -847,6 +937,7 @@ export async function deleteOffer(offerId: string): Promise<boolean> {
   try {
     const { error } = await supabase.from('offers').delete().eq('id', offerId);
     if (error) throw error;
+    clearCache('offers:');
     return true;
   } catch (err) {
     console.warn('[Supabase] Exceção ao excluir oferta:', err);
@@ -896,8 +987,12 @@ export async function logBusinessEvent(
 }
 
 export async function getBannersConfig(cityId: string = '48d98d79-bafe-460f-9a5f-dd5dc04e85ed'): Promise<BannersConfig> {
+  const cacheKey = `banners:${cityId}`;
+  const cached = getCached<BannersConfig>(cacheKey);
+  if (cached) return cached;
+
   const fallback = defaultBannersData as unknown as BannersConfig;
-  if (!isSupabaseConfigured) return fallback;
+  if (!isSupabaseConfigured) return setCached(cacheKey, fallback, 60);
 
   try {
     const { data, error } = await supabase
@@ -910,7 +1005,7 @@ export async function getBannersConfig(cityId: string = '48d98d79-bafe-460f-9a5f
       const allCities = defaultCitiesData as unknown as City[];
       const targetCity = allCities.find((c) => c.id === cityId);
       if (targetCity && targetCity.name !== 'Umuarama') {
-        return {
+        const customFallback = {
           ...fallback,
           sidebar_bottom: {
             ...fallback.sidebar_bottom,
@@ -925,8 +1020,9 @@ export async function getBannersConfig(cityId: string = '48d98d79-bafe-460f-9a5f
             image_url: targetCity.hero_image || fallback.hero.image_url,
           },
         };
+        return setCached(cacheKey, customFallback, 60);
       }
-      return fallback;
+      return setCached(cacheKey, fallback, 60);
     }
 
     const rows = data as CityBanner[];
@@ -935,14 +1031,15 @@ export async function getBannersConfig(cityId: string = '48d98d79-bafe-460f-9a5f
     const hero = rows.find((r) => r.position === 'hero') || fallback.hero;
     const ads = rows.filter((r) => r.position === 'sidebar_ad');
 
-    return {
+    const result: BannersConfig = {
       sidebar_top: top,
       sidebar_bottom: bottom,
       hero,
       sidebar_ads: ads.length > 0 ? ads : fallback.sidebar_ads,
     };
+    return setCached(cacheKey, result, 60);
   } catch {
-    return fallback;
+    return setCached(cacheKey, fallback, 60);
   }
 }
 
@@ -997,18 +1094,22 @@ export const DEFAULT_PLANS: Plan[] = [
 ];
 
 export async function getPlans(): Promise<Plan[]> {
-  if (!isSupabaseConfigured) return DEFAULT_PLANS;
+  const cacheKey = 'plans:all';
+  const cached = getCached<Plan[]>(cacheKey);
+  if (cached) return cached;
+
+  if (!isSupabaseConfigured) return setCached(cacheKey, DEFAULT_PLANS, 120);
   try {
     const { data, error } = await supabase
       .from('plans')
       .select('*')
       .order('order_index', { ascending: true });
     if (error || !data || data.length === 0) {
-      return DEFAULT_PLANS;
+      return setCached(cacheKey, DEFAULT_PLANS, 120);
     }
-    return data as Plan[];
+    return setCached(cacheKey, data as Plan[], 120);
   } catch {
-    return DEFAULT_PLANS;
+    return setCached(cacheKey, DEFAULT_PLANS, 120);
   }
 }
 

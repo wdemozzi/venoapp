@@ -78,6 +78,35 @@ export const Navbar: React.FC<NavbarProps> = ({ currentCity, allCities = [] }) =
     router.push(`/${c.slug}`);
   };
 
+  const handleNavClick = (sectionId: string, e: React.MouseEvent) => {
+    setActiveTab(sectionId as any);
+    if (typeof document !== 'undefined') {
+      const el = document.getElementById(sectionId);
+      if (el) {
+        e.preventDefault();
+        el.scrollIntoView({ behavior: 'smooth' });
+        if (typeof window !== 'undefined') {
+          window.history.pushState(null, '', `/${activeCity.slug}#${sectionId}`);
+        }
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.replace('#', '');
+      if (hash && ['eventos', 'empresas', 'explorar', 'ofertas'].includes(hash)) {
+        setActiveTab(hash as any);
+        setTimeout(() => {
+          const el = document.getElementById(hash);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth' });
+          }
+        }, 150);
+      }
+    }
+  }, []);
+
   return (
     <header className="bg-[#22093c] text-white sticky top-0 z-50 border-b border-[#36135c]">
       <div className="max-w-[1360px] mx-auto px-4 sm:px-6 h-[68px] flex items-center justify-between gap-4">
@@ -163,7 +192,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentCity, allCities = [] }) =
             )}
           </div>
 
-          {/* Nav Links */}
+          {/* Nav Links (Desktop) */}
           <nav className="hidden md:flex items-center gap-1.5">
             <Link
               href={`/${activeCity.slug}`}
@@ -178,8 +207,9 @@ export const Navbar: React.FC<NavbarProps> = ({ currentCity, allCities = [] }) =
               <span>Início</span>
             </Link>
 
-            <button
-              onClick={() => setActiveTab('eventos')}
+            <Link
+              href={`/${activeCity.slug}#eventos`}
+              onClick={(e) => handleNavClick('eventos', e)}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${
                 activeTab === 'eventos'
                   ? 'bg-[#64249d] text-white shadow-sm'
@@ -188,7 +218,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentCity, allCities = [] }) =
             >
               <Calendar className="w-4 h-4 text-white/80" />
               <span>Eventos</span>
-            </button>
+            </Link>
 
             <Link
               href="/fotos"
@@ -203,8 +233,9 @@ export const Navbar: React.FC<NavbarProps> = ({ currentCity, allCities = [] }) =
               <span>Fotos</span>
             </Link>
 
-            <button
-              onClick={() => setActiveTab('empresas')}
+            <Link
+              href={`/${activeCity.slug}#empresas`}
+              onClick={(e) => handleNavClick('empresas', e)}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${
                 activeTab === 'empresas'
                   ? 'bg-[#64249d] text-white shadow-sm'
@@ -213,10 +244,11 @@ export const Navbar: React.FC<NavbarProps> = ({ currentCity, allCities = [] }) =
             >
               <Building2 className="w-4 h-4 text-white/80" />
               <span>Empresas</span>
-            </button>
+            </Link>
 
-            <button
-              onClick={() => setActiveTab('explorar')}
+            <Link
+              href={`/${activeCity.slug}#explorar`}
+              onClick={(e) => handleNavClick('explorar', e)}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${
                 activeTab === 'explorar'
                   ? 'bg-[#64249d] text-white shadow-sm'
@@ -225,7 +257,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentCity, allCities = [] }) =
             >
               <Compass className="w-4 h-4 text-white/80" />
               <span>Explorar</span>
-            </button>
+            </Link>
           </nav>
         </div>
 
@@ -269,6 +301,50 @@ export const Navbar: React.FC<NavbarProps> = ({ currentCity, allCities = [] }) =
           </Link>
         </div>
       </div>
+
+      {/* Mobile Bottom Navigation Bar */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#1b062f]/95 backdrop-blur-md border-t border-purple-800/40 px-2 py-2 flex items-center justify-around shadow-2xl text-[10px]">
+        <Link
+          href={`/${activeCity.slug}`}
+          onClick={() => setActiveTab('inicio')}
+          className={`flex flex-col items-center gap-1 transition ${activeTab === 'inicio' ? 'text-purple-300 font-bold' : 'text-purple-200/70 hover:text-white'}`}
+        >
+          <Home className="w-5 h-5" />
+          <span>Início</span>
+        </Link>
+        <Link
+          href={`/${activeCity.slug}#eventos`}
+          onClick={(e) => handleNavClick('eventos', e)}
+          className={`flex flex-col items-center gap-1 transition ${activeTab === 'eventos' ? 'text-purple-300 font-bold' : 'text-purple-200/70 hover:text-white'}`}
+        >
+          <Calendar className="w-5 h-5" />
+          <span>Eventos</span>
+        </Link>
+        <Link
+          href="/fotos"
+          onClick={() => setActiveTab('fotos')}
+          className={`flex flex-col items-center gap-1 transition ${activeTab === 'fotos' ? 'text-purple-300 font-bold' : 'text-purple-200/70 hover:text-white'}`}
+        >
+          <Camera className="w-5 h-5" />
+          <span>Fotos</span>
+        </Link>
+        <Link
+          href={`/${activeCity.slug}#empresas`}
+          onClick={(e) => handleNavClick('empresas', e)}
+          className={`flex flex-col items-center gap-1 transition ${activeTab === 'empresas' ? 'text-purple-300 font-bold' : 'text-purple-200/70 hover:text-white'}`}
+        >
+          <Building2 className="w-5 h-5" />
+          <span>Empresas</span>
+        </Link>
+        <Link
+          href={`/${activeCity.slug}#explorar`}
+          onClick={(e) => handleNavClick('explorar', e)}
+          className={`flex flex-col items-center gap-1 transition ${activeTab === 'explorar' ? 'text-purple-300 font-bold' : 'text-purple-200/70 hover:text-white'}`}
+        >
+          <Compass className="w-5 h-5" />
+          <span>Explorar</span>
+        </Link>
+      </nav>
     </header>
   );
 };

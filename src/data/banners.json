@@ -1,0 +1,44 @@
+{
+  "sidebar_top": {
+    "id": "banner-sidebar-top",
+    "position": "sidebar_top",
+    "title": "A sua cidade na palma da mão.",
+    "subtitle": "Acesse eventos, fotos, empresas e tudo o que acontece em Umuarama. �? rápido, fácil e totalmente gratuito.",
+    "button_text": "Explorar agora",
+    "link_url": "#baixar-app",
+    "image_url": "/assets/phone-mockup-new.png",
+    "is_active": true
+  },
+  "sidebar_bottom": {
+    "id": "banner-sidebar-bottom",
+    "position": "sidebar_bottom",
+    "title": "Eu amo Umuarama",
+    "subtitle": "Nossa cidade, nosso orgulho!",
+    "image_url": "/assets/love-banner-new.jpg",
+    "link_url": "/fotos",
+    "is_active": true
+  },
+  "hero": {
+    "id": "banner-hero",
+    "position": "hero",
+    "tagline": "Descubra, viva, compartilhe",
+    "title": "Tudo o que acontece na sua cidade.",
+    "subtitle": "Eventos, fotos, empresas, ofertas e muito mais. Em um só lugar. Bem-vindo ao Venoapp!",
+    "image_url": "/assets/hero-new-full.jpg",
+    "decorative_text": "é incrível! �T�",
+    "is_active": true
+  },
+  "sidebar_ads": [
+    {
+      "id": "ad-1",
+      "position": "sidebar_ad",
+      "title": "Anuncie sua empresa no Venoapp",
+      "subtitle": "Alcance milhares de clientes em Umuarama todos os dias.",
+      "button_text": "Quero anunciar",
+      "link_url": "/portal-parceiro",
+      "image_url": "https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&q=80&w=600",
+      "is_active": true,
+      "order_index": 1
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+[
+  {
+    "id": "48d98d79-bafe-460f-9a5f-dd5dc04e85ed",
+    "slug": "umuarama-pr",
+    "name": "Umuarama",
+    "state": "PR",
+    "headline": "Tudo o que acontece na sua cidade.",
+    "hero_image": "/assets/hero-new-full.jpg",
+    "franchisee_name": "Venoapp Matriz Umuarama",
+    "franchisee_email": "contato@umuarama.venoapp.com",
+    "franchisee_phone": "5544997775544",
+    "status": "active",
+    "created_at": "2026-09-17T00:00:00.000Z"
+  },
+  {
+    "id": "c1a00000-0000-0000-0000-000000000002",
+    "slug": "cianorte-pr",
+    "name": "Cianorte",
+    "state": "PR",
+    "headline": "O melhor da Capital do Vestuário em um só lugar.",
+    "hero_image": "/assets/hero-cianorte-love.jpg",
+    "franchisee_name": "Franquia Cianorte",
+    "franchisee_email": "contato@cianorte.venoapp.com",
+    "franchisee_phone": "5544998881234",
+    "status": "active",
+    "created_at": "2026-09-17T00:00:00.000Z"
+  },
+  {
+    "id": "f1a00000-0000-0000-0000-000000000003",
+    "slug": "maringa-pr",
+    "name": "Maringá",
+    "state": "PR",
+    "headline": "A Cidade Canção conectada na palma da mão.",
+    "hero_image": "/assets/hero-maringa-love.jpg",
+    "franchisee_name": "Franquia Maringá",
+    "franchisee_email": "contato@maringa.venoapp.com",
+    "franchisee_phone": "5544991112233",
+    "status": "active",
+    "created_at": "2026-09-17T00:00:00.000Z"
+  },
+  {
+    "id": "ca4aca55-8517-4254-87d6-9c717c38f8ba",
+    "slug": "cascavel-pr",
+    "name": "Cascavel",
+    "state": "PR",
+    "headline": "Tudo o que acontece em Cascavel.",
+    "hero_image": "/assets/hero-cascavel-love.jpg",
+    "franchisee_name": "",
+    "franchisee_email": "",
+    "franchisee_phone": "",
+    "status": "active",
+    "created_at": "2026-09-17T14:35:37.572Z"
+  }
+]

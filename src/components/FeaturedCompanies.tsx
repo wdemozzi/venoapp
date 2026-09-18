@@ -94,9 +94,10 @@ const defaultCompanies: CompanyDisplay[] = [
 
 interface FeaturedCompaniesProps {
   businesses?: SupabaseBusiness[];
+  citySlug?: string;
 }
 
-export const FeaturedCompanies: React.FC<FeaturedCompaniesProps> = ({ businesses }) => {
+export const FeaturedCompanies: React.FC<FeaturedCompaniesProps> = ({ businesses, citySlug }) => {
   const router = useRouter();
   const [clickedWhatsapp, setClickedWhatsapp] = useState<string | null>(null);
 
@@ -171,13 +172,13 @@ export const FeaturedCompanies: React.FC<FeaturedCompaniesProps> = ({ businesses
           </h2>
         </div>
 
-        <a
-          href="#todas-empresas"
-          className="text-xs sm:text-sm font-semibold text-[#7b2dc7] hover:text-[#5e229c] flex items-center gap-1 group transition-colors"
+        <Link
+          href={citySlug ? `/empresas?cidade=${citySlug}` : '/empresas'}
+          className="text-xs sm:text-sm font-semibold text-[#7b2dc7] hover:text-[#5e229c] flex items-center gap-1 group transition-colors cursor-pointer"
         >
           <span>Ver todas</span>
           <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-        </a>
+        </Link>
       </div>
 
       {/* Grid of Company Cards */}
@@ -302,6 +303,18 @@ export const FeaturedCompanies: React.FC<FeaturedCompaniesProps> = ({ businesses
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Bottom Button to View Full Directory */}
+      <div className="mt-4 pt-1 text-center">
+        <Link
+          href={citySlug ? `/empresas?cidade=${citySlug}` : '/empresas'}
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-[#7b2dc7] hover:text-[#5e229c] font-bold text-xs transition border border-purple-200/70 shadow-xs cursor-pointer"
+        >
+          <Building2 className="w-4 h-4" />
+          <span>Ver todas as empresas no Guia Comercial</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </Link>
       </div>
     </section>
   );

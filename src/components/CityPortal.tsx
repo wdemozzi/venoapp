@@ -63,10 +63,10 @@ export async function CityPortal({ city, allCities }: CityPortalProps) {
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Main Left Feed */}
           <div className="lg:col-span-8 xl:col-span-9 space-y-8">
-            <FeaturedEvents events={events} />
+            <FeaturedEvents events={events} citySlug={city.slug} />
             <FeaturedOffers offers={offers} businesses={businesses} />
             <FeaturedAlbums albums={albums} />
-            <FeaturedCompanies businesses={businesses} />
+            <FeaturedCompanies businesses={businesses} citySlug={city.slug} />
           </div>
 
           {/* Right Sidebar Column */}

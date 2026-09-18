@@ -1,10 +1,42 @@
+import React from 'react';
 import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
+import { getCityBySlug, getCities, getBusinessesByCity, City } from '@/lib/supabase';
+import { EmpresasDirectoryView } from './EmpresasDirectoryView';
 
-export const revalidate = 60;
+export const revalidate = 30;
 
-export default async function EmpresasPage() {
+interface PageProps {
+  searchParams: Promise<{ cidade?: string }>;
+}
+
+export default async function EmpresasPage({ searchParams }: PageProps) {
+  const { cidade } = await searchParams;
   const cookieStore = await cookies();
-  const citySlug = cookieStore.get('venoapp_city')?.value || 'umuarama-pr';
-  redirect('/' + citySlug + '#empresas');
+  const cookieCity = cookieStore.get('venoapp_city')?.value;
+
+  const targetSlug = cidade || cookieCity || 'umuarama-pr';
+
+  const [allCities, cityBySlug] = await Promise.all([
+    getCities(),
+    getCityBySlug(targetSlug),
+  ]);
+
+  const activeCity: City = cityBySlug || allCities[0] || {
+    id: '48d98d79-bafe-460f-9a5f-dd5dc04e85ed',
+    name: 'Umuarama',
+    slug: 'umuarama-pr',
+    state: 'PR',
+    headline: 'Tudo o que acontece na sua cidade.',
+    hero_image: '/assets/hero-new-full.jpg',
+  };
+
+  const businesses = await getBusinessesByCity(activeCity.id);
+
+  return (
+    <EmpresasDirectoryView
+      city={activeCity}
+      allCities={allCities}
+      businesses={businesses}
+    />
+  );
 }

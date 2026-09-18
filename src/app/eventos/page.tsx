@@ -1,10 +1,42 @@
+import React from 'react';
 import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
+import { getCityBySlug, getCities, getEventsByCity, City } from '@/lib/supabase';
+import { EventosAgendaView } from './EventosAgendaView';
 
-export const revalidate = 60;
+export const revalidate = 30;
 
-export default async function EventosPage() {
+interface PageProps {
+  searchParams: Promise<{ cidade?: string }>;
+}
+
+export default async function EventosPage({ searchParams }: PageProps) {
+  const { cidade } = await searchParams;
   const cookieStore = await cookies();
-  const citySlug = cookieStore.get('venoapp_city')?.value || 'umuarama-pr';
-  redirect('/' + citySlug + '#eventos');
+  const cookieCity = cookieStore.get('venoapp_city')?.value;
+
+  const targetSlug = cidade || cookieCity || 'umuarama-pr';
+
+  const [allCities, cityBySlug] = await Promise.all([
+    getCities(),
+    getCityBySlug(targetSlug),
+  ]);
+
+  const activeCity: City = cityBySlug || allCities[0] || {
+    id: '48d98d79-bafe-460f-9a5f-dd5dc04e85ed',
+    name: 'Umuarama',
+    slug: 'umuarama-pr',
+    state: 'PR',
+    headline: 'Tudo o que acontece na sua cidade.',
+    hero_image: '/assets/hero-new-full.jpg',
+  };
+
+  const events = await getEventsByCity(activeCity.id);
+
+  return (
+    <EventosAgendaView
+      city={activeCity}
+      allCities={allCities}
+      events={events}
+    />
+  );
 }

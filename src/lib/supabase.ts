@@ -51,6 +51,9 @@ export interface Event {
   is_highlight?: boolean;
   is_free?: boolean;
   ticket_url?: string | null;
+  ticket_price?: string | null;
+  description?: string | null;
+  business_id?: string | null;
 }
 
 export interface Business {
@@ -760,7 +763,7 @@ export const DEFAULT_BUSINESSES: Business[] = [
   },
   {
     id: '6ad2f081-1dec-45a0-b667-8d75673ead8a',
-    city_id: 'aa036393-ae73-41ad-8566-17c5d0b8b478',
+    city_id: 'c1a00000-0000-0000-0000-000000000002',
     name: 'Moda & Cia Cianorte',
     slug: 'moda-e-cia-cianorte',
     category: 'Moda & Vestuário',
@@ -777,6 +780,126 @@ export const DEFAULT_BUSINESSES: Business[] = [
     is_featured: true,
     instagram: 'modaciacianorte',
     website: 'https://modaciacianorte.com.br',
+  },
+  {
+    id: 'cianorte-rest-01',
+    city_id: 'c1a00000-0000-0000-0000-000000000002',
+    name: 'Villa Gastronômica Cianorte',
+    slug: 'villa-gastronomica-cianorte',
+    category: 'Restaurante & Grill',
+    description: 'Cortes nobres de carnes na parrilla, buffet requintado no almoço e noites especiais com chopp artesanal e música ao vivo.',
+    address: 'Av. América, 890 - Zona 01, Cianorte - PR',
+    phone: '4436319988',
+    whatsapp: '44998881234',
+    rating: '4.8',
+    cover_url: '/assets/empresa-sabor.jpg',
+    logo_text: '🥩',
+    logo_bg: 'bg-[#291b15]',
+    logo_color: 'text-amber-400',
+    is_verified: true,
+    is_featured: true,
+    instagram: 'villagastronomicacianorte',
+    website: 'https://villacianorte.com.br',
+  },
+  {
+    id: 'maringa-rest-01',
+    city_id: 'f1a00000-0000-0000-0000-000000000003',
+    name: 'Empório da Canção Gastronomia',
+    slug: 'emporio-da-cancao',
+    category: 'Restaurante & Bar',
+    description: 'O melhor da culinária contemporânea maringaense. Pratos executivos gourmet, carta de vinhos selecionados e ambiente climatizado no coração da Zona 01.',
+    address: 'Av. Tiradentes, 1020 - Zona 01, Maringá - PR',
+    phone: '4430281122',
+    whatsapp: '44991112233',
+    rating: '4.9',
+    cover_url: '/assets/empresa-sabor.jpg',
+    logo_text: '🍷',
+    logo_bg: 'bg-[#3b1261]',
+    logo_color: 'text-purple-200',
+    is_verified: true,
+    is_featured: true,
+    instagram: 'emporiodacancaomga',
+    website: 'https://emporiodacancao.com.br',
+  },
+  {
+    id: 'maringa-auto-01',
+    city_id: 'f1a00000-0000-0000-0000-000000000003',
+    name: 'Auto Center Maringá Norte',
+    slug: 'auto-center-maringa-norte',
+    category: 'Serviços Automotivos',
+    description: 'Manutenção preventiva especializada, revisão computadorizada, pneus de alta performance e alinhamento a laser em Maringá.',
+    address: 'Av. Colombo, 4500 - Zona 07, Maringá - PR',
+    phone: '4432245566',
+    whatsapp: '44997771122',
+    rating: '4.8',
+    cover_url: '/assets/empresa-autocenter.jpg',
+    logo_text: '🚗',
+    logo_bg: 'bg-[#1b2b45]',
+    logo_color: 'text-blue-300',
+    is_verified: true,
+    is_featured: true,
+    instagram: 'autocentermaringa',
+    website: 'https://autocentermaringa.com.br',
+  },
+  {
+    id: 'cascavel-grill-01',
+    city_id: 'ca4aca55-8517-4254-87d6-9c717c38f8ba',
+    name: 'Churrascaria & Grill Cascavel',
+    slug: 'churrascaria-grill-cascavel',
+    category: 'Churrascaria & Restaurante',
+    description: 'Rodízio completo com os melhores cortes tradicionais gaúchos, buffet variado de saladas, sushis e sobremesas artesanais no Oeste Paranaense.',
+    address: 'Av. Brasil, 6800 - Centro, Cascavel - PR',
+    phone: '4532251010',
+    whatsapp: '45999887766',
+    rating: '4.9',
+    cover_url: '/assets/empresa-sabor.jpg',
+    logo_text: '🍖',
+    logo_bg: 'bg-[#291b15]',
+    logo_color: 'text-amber-400',
+    is_verified: true,
+    is_featured: true,
+    instagram: 'churrascariacascavel',
+    website: 'https://churrascariacascavel.com.br',
+  },
+  {
+    id: 'cascavel-estetica-01',
+    city_id: 'ca4aca55-8517-4254-87d6-9c717c38f8ba',
+    name: 'Espaço Estética & Spa Cascavel',
+    slug: 'espaco-estetica-spa-cascavel',
+    category: 'Estética & Bem-Estar',
+    description: 'Tratamentos faciais e corporais com tecnologia de ponta, massoterapia relaxante, drenagem pós-operatória e podologia em clínica moderna.',
+    address: 'Rua Paraná, 2400 - Centro, Cascavel - PR',
+    phone: '4532248800',
+    whatsapp: '45999114455',
+    rating: '4.8',
+    cover_url: '/assets/empresa-bella.jpg',
+    logo_text: '✨',
+    logo_bg: 'bg-[#5c493c]',
+    logo_color: 'text-[#d6c7b2]',
+    is_verified: true,
+    is_featured: true,
+    instagram: 'esteticacascavel',
+    website: 'https://esteticacascavel.com.br',
+  },
+  {
+    id: 'umuarama-cafe-01',
+    city_id: '48d98d79-bafe-460f-9a5f-dd5dc04e85ed',
+    name: 'Emporium dos Pães & Café Bistrô',
+    slug: 'emporium-dos-paes-cafe',
+    category: 'Padaria & Cafeteria',
+    description: 'Pães artesanais de fermentação natural, café especial moído na hora, brunchs completos aos finais de semana e confeitaria fina.',
+    address: 'Av. Rolândia, 3900 - Centro, Umuarama - PR',
+    phone: '4436225544',
+    whatsapp: '44991238899',
+    rating: '4.9',
+    cover_url: '/assets/empresa-bella.jpg',
+    logo_text: '☕',
+    logo_bg: 'bg-[#3b1261]',
+    logo_color: 'text-purple-200',
+    is_verified: true,
+    is_featured: true,
+    instagram: 'emporiumpaesumuarama',
+    website: 'https://emporiumpaes.com.br',
   },
 ];
 
@@ -796,7 +919,8 @@ export async function getBusinessesByCity(cityId: string): Promise<Business[]> {
       .eq('city_id', cityId);
 
     if (error || !data || data.length === 0) {
-      const list = DEFAULT_BUSINESSES.filter((b) => b.city_id === cityId || b.city_id === '48d98d79-bafe-460f-9a5f-dd5dc04e85ed');
+      const cityMatches = DEFAULT_BUSINESSES.filter((b) => b.city_id === cityId);
+      const list = cityMatches.length > 0 ? cityMatches : DEFAULT_BUSINESSES.filter((b) => b.city_id === '48d98d79-bafe-460f-9a5f-dd5dc04e85ed');
       return setCached(cacheKey, list, 60);
     }
     const parsed = ((data || []) as Business[]).map(parseBusinessMetadata);

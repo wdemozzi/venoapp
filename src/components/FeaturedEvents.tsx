@@ -68,9 +68,10 @@ const defaultEvents: EventDisplay[] = [
 
 interface FeaturedEventsProps {
   events?: SupabaseEvent[];
+  citySlug?: string;
 }
 
-export const FeaturedEvents: React.FC<FeaturedEventsProps> = ({ events }) => {
+export const FeaturedEvents: React.FC<FeaturedEventsProps> = ({ events, citySlug }) => {
   const router = useRouter();
 
   const displayEvents: EventDisplay[] = events && events.length > 0
@@ -113,13 +114,13 @@ export const FeaturedEvents: React.FC<FeaturedEventsProps> = ({ events }) => {
           </h2>
         </div>
 
-        <a
-          href="#todos-eventos"
-          className="text-xs sm:text-sm font-semibold text-[#7b2dc7] hover:text-[#5e229c] flex items-center gap-1 group transition-colors"
+        <Link
+          href={citySlug ? `/eventos?cidade=${citySlug}` : '/eventos'}
+          className="text-xs sm:text-sm font-semibold text-[#7b2dc7] hover:text-[#5e229c] flex items-center gap-1 group transition-colors cursor-pointer"
         >
           <span>Ver todos</span>
           <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-        </a>
+        </Link>
       </div>
 
       {/* Grid of Event Cards */}

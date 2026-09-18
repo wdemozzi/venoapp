@@ -147,7 +147,6 @@ export default function AdminPage() {
       setAuthError('');
       if (session.role === 'franchisee' && session.cityId) {
         setSelectedCityId(session.cityId);
-        refreshData(session.cityId);
       }
       if (rememberMe) {
         try {
@@ -422,94 +421,111 @@ export default function AdminPage() {
     }
   };
 
-  // Fetch all data scoped by active city
-  const refreshData = useCallback(async (forcedCityId?: string) => {
-    setLoading(true);
-    try {
-      // 1. Carrega lista de cidades de /api/cities
-      let currentCities = availableCities;
-      try {
-        const cRes = await fetch('/api/cities');
-        const cJson = await cRes.json();
-        if (Array.isArray(cJson) && cJson.length > 0) {
-          setAvailableCities(cJson);
-          currentCities = cJson;
-        }
-      } catch {
-        // fallback
-      }
+  const isRefreshingRef = useRef(false);
 
+  // Carrega a lista de cidades ativas na rede no carregamento inicial
+  useEffect(() => {
+    let isMounted = true;
+    fetch('/api/cities')
+      .then((r) => r.json())
+      .then((data) => {
+        if (isMounted && Array.isArray(data) && data.length > 0) {
+          setAvailableCities(data);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Fetch all data scoped strictly by active city
+  const refreshData = useCallback(async (forcedCityId?: string) => {
+    if (isRefreshingRef.current) return;
+    isRefreshingRef.current = true;
+    setLoading(true);
+
+    try {
       const activeCityId = (adminSession?.role === 'franchisee' && adminSession.cityId)
         ? adminSession.cityId
         : (forcedCityId || selectedCityId);
-      const activeCityObj = currentCities.find((c) => c.id === activeCityId) || currentCities[0];
-      setCity(activeCityObj);
-      setSelectedCityId(activeCityObj.id);
 
-      // 2. Carrega dados estritamente filtrados pelo city_id da cidade ativa
-      const [evRes, busRes, shortRes, albumsData, plansRes, offersData] = await Promise.all([
-        supabase.from('events').select('*').eq('city_id', activeCityObj.id).order('start_date', { ascending: true }),
-        supabase.from('businesses').select('*').eq('city_id', activeCityObj.id).order('name', { ascending: true }),
-        supabase.from('city_shortcuts').select('*').eq('city_id', activeCityObj.id).order('order_index', { ascending: true }),
-        getAlbumsByCity(activeCityObj.id),
+      // Atualiza o objeto city atual
+      const activeCityObj =
+        availableCities.find((c) => c.id === activeCityId) ||
+        DEFAULT_CITIES.find((c) => c.id === activeCityId) ||
+        availableCities[0] ||
+        DEFAULT_CITIES[0];
+      setCity(activeCityObj);
+
+      // Carrega dados estritamente filtrados pelo city_id da cidade ativa
+      const [evRes, busRes, shortRes, albumsData, plansRes, offersData, bannersRes] = await Promise.all([
+        supabase.from('events').select('*').eq('city_id', activeCityId).order('start_date', { ascending: true }),
+        supabase.from('businesses').select('*').eq('city_id', activeCityId).order('name', { ascending: true }),
+        supabase.from('city_shortcuts').select('*').eq('city_id', activeCityId).order('order_index', { ascending: true }),
+        getAlbumsByCity(activeCityId),
         supabase.from('plans').select('*').order('order_index', { ascending: true }),
-        getOffersByCity(activeCityObj.id),
+        getOffersByCity(activeCityId),
+        fetch('/api/banners').then((r) => r.json()).catch(() => null),
       ]);
 
       if (evRes.data) setEvents(evRes.data);
       else setEvents([]);
+
       if (busRes.data) setBusinesses(busRes.data.map(parseBusinessMetadata));
       else setBusinesses([]);
+
       if (shortRes.data) setShortcuts(shortRes.data);
       else setShortcuts([]);
+
       if (albumsData) setAlbums(albumsData);
       else setAlbums([]);
-      fetch('/api/plans')
-        .then((r) => r.json())
-        .then((pData) => {
-          if (Array.isArray(pData) && pData.length > 0) setPlans(pData);
-        })
-        .catch(() => {
-          if (plansRes.data && plansRes.data.length > 0) setPlans(plansRes.data);
-        });
+
       if (offersData) setOffers(offersData);
       else setOffers([]);
 
-      fetch('/api/banners')
-        .then((r) => r.json())
-        .then((bData) => {
-          if (bData && bData.sidebar_top) setBanners(bData);
-        })
-        .catch(() => {});
+      if (bannersRes && bannersRes.sidebar_top) {
+        setBanners(bannersRes);
+      }
+
+      // Sincroniza planos comerciais via /api/plans
+      try {
+        const pRes = await fetch('/api/plans');
+        const pData = await pRes.json();
+        if (Array.isArray(pData) && pData.length > 0) {
+          setPlans(pData);
+        } else if (plansRes.data && plansRes.data.length > 0) {
+          setPlans(plansRes.data);
+        }
+      } catch {
+        if (plansRes.data && plansRes.data.length > 0) setPlans(plansRes.data);
+      }
     } catch (err: unknown) {
       console.error('Falha ao carregar dados:', err);
       showToast('Erro ao carregar dados da cidade', 'error');
     } finally {
       setLoading(false);
+      isRefreshingRef.current = false;
     }
-  }, [selectedCityId, availableCities, adminSession]);
+  }, [selectedCityId, availableCities, adminSession?.role, adminSession?.cityId]);
 
+  // Carrega dados quando autenticado ou quando a cidade selecionada mudar (sem loop)
   useEffect(() => {
-    let ignore = false;
-    Promise.resolve().then(() => {
-      if (!ignore) {
-        refreshData();
-      }
-    });
-    return () => {
-      ignore = true;
-    };
-  }, [refreshData]);
+    if (!isAuthenticated) return;
+    refreshData();
+  }, [isAuthenticated, selectedCityId, adminSession?.role, adminSession?.cityId, refreshData]);
 
   const handleChangeCity = (newCityId: string) => {
     if (adminSession?.role === 'franchisee') {
       showToast('Acesso restrito à praça de sua franquia.', 'error');
       return;
     }
+    if (!newCityId || newCityId === selectedCityId) return;
+
     setSelectedCityId(newCityId);
-    refreshData(newCityId);
     const target = availableCities.find((c) => c.id === newCityId);
     if (target) {
+      setCity(target);
       showToast(`Praça alterada para ${target.name} - ${target.state || 'PR'}`);
     }
   };
@@ -544,6 +560,10 @@ export default function AdminPage() {
       });
 
       if (data.city) {
+        setAvailableCities((prev) => {
+          const exists = prev.some((c) => c.id === data.city.id);
+          return exists ? prev : [...prev, data.city];
+        });
         handleChangeCity(data.city.id);
       }
     } catch (err: unknown) {

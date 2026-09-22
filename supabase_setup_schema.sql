@@ -1,9 +1,9 @@
 -- ==============================================================================
--- VENOAPP - SCRIPT MASTER DE CONFIGURAÇÃO DO SUPABASE (ATUALIZADO)
+-- VENOAPP - SCRIPT MASTER DE CONFIGURAÇÃO DO SUPABASE (100% COMPATÍVEL)
 -- Execute este script no SQL Editor do seu painel Supabase (https://supabase.com/dashboard)
 -- ==============================================================================
 
--- 1. ADICIONAR COLUNAS QUE FALTAVAM NA TABELA DE CIDADES (cities)
+-- 1. ADICIONAR AS COLUNAS QUE FALTAVAM NA TABELA DE CIDADES (cities)
 ALTER TABLE IF EXISTS public.cities ADD COLUMN IF NOT EXISTS headline TEXT DEFAULT 'Tudo o que acontece na sua cidade.';
 ALTER TABLE IF EXISTS public.cities ADD COLUMN IF NOT EXISTS hero_image TEXT DEFAULT '/assets/hero-new-full.jpg';
 ALTER TABLE IF EXISTS public.cities ADD COLUMN IF NOT EXISTS franchisee_name TEXT DEFAULT '';
@@ -11,15 +11,14 @@ ALTER TABLE IF EXISTS public.cities ADD COLUMN IF NOT EXISTS franchisee_email TE
 ALTER TABLE IF EXISTS public.cities ADD COLUMN IF NOT EXISTS franchisee_phone TEXT DEFAULT '';
 ALTER TABLE IF EXISTS public.cities ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
 
--- 2. ADICIONAR COLUNAS EM OFFERS E BUSINESSES SE FALTAR
+-- 2. ADICIONAR COLUNAS AUXILIARES EM OFFERS E BUSINESSES SE FALTAR
 ALTER TABLE IF EXISTS public.offers ADD COLUMN IF NOT EXISTS image_url TEXT;
 ALTER TABLE IF EXISTS public.businesses ADD COLUMN IF NOT EXISTS subscription_price NUMERIC;
 ALTER TABLE IF EXISTS public.businesses ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMPTZ;
 ALTER TABLE IF EXISTS public.businesses ADD COLUMN IF NOT EXISTS contact_name TEXT;
 
 -- 3. DESATIVAR RLS (Row-Level Security) NAS TABELAS PRINCIPAIS
--- Isso permite que o painel administrativo (superadmin e franqueados) consiga
--- inserir, editar e excluir registros sem bloqueio de permissão 42501.
+-- Permite que o painel admin insira e altere dados sem bloqueio 42501
 ALTER TABLE IF EXISTS public.plans DISABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.cities DISABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.events DISABLE ROW LEVEL SECURITY;
@@ -51,50 +50,40 @@ ALTER TABLE public.city_banners DISABLE ROW LEVEL SECURITY;
 -- 5. CRIAR POLÍTICAS PERMISSIVAS CASO O RLS SEJA REATIVADO NO FUTURO
 DO $$
 BEGIN
-  -- plans
   DROP POLICY IF EXISTS "Public access plans" ON public.plans;
   CREATE POLICY "Public access plans" ON public.plans FOR ALL USING (true) WITH CHECK (true);
 
-  -- cities
   DROP POLICY IF EXISTS "Public access cities" ON public.cities;
   CREATE POLICY "Public access cities" ON public.cities FOR ALL USING (true) WITH CHECK (true);
 
-  -- events
   DROP POLICY IF EXISTS "Public access events" ON public.events;
   CREATE POLICY "Public access events" ON public.events FOR ALL USING (true) WITH CHECK (true);
 
-  -- businesses
   DROP POLICY IF EXISTS "Public access businesses" ON public.businesses;
   CREATE POLICY "Public access businesses" ON public.businesses FOR ALL USING (true) WITH CHECK (true);
 
-  -- offers
   DROP POLICY IF EXISTS "Public access offers" ON public.offers;
   CREATE POLICY "Public access offers" ON public.offers FOR ALL USING (true) WITH CHECK (true);
 
-  -- city_shortcuts
   DROP POLICY IF EXISTS "Public access city_shortcuts" ON public.city_shortcuts;
   CREATE POLICY "Public access city_shortcuts" ON public.city_shortcuts FOR ALL USING (true) WITH CHECK (true);
 
-  -- city_banners
   DROP POLICY IF EXISTS "Public access city_banners" ON public.city_banners;
   CREATE POLICY "Public access city_banners" ON public.city_banners FOR ALL USING (true) WITH CHECK (true);
 
-  -- event_albums
   DROP POLICY IF EXISTS "Public access event_albums" ON public.event_albums;
   CREATE POLICY "Public access event_albums" ON public.event_albums FOR ALL USING (true) WITH CHECK (true);
 
-  -- event_photos
   DROP POLICY IF EXISTS "Public access event_photos" ON public.event_photos;
   CREATE POLICY "Public access event_photos" ON public.event_photos FOR ALL USING (true) WITH CHECK (true);
 EXCEPTION WHEN OTHERS THEN
   NULL;
 END $$;
 
--- 6. POPULAR OU ATUALIZAR AS CIDADES INICIAIS
-INSERT INTO public.cities (id, slug, name, state, headline, hero_image, franchisee_name, franchisee_email, franchisee_phone, status)
+-- 6. POPULAR OU ATUALIZAR AS CIDADES BASEANDO-SE NO SLUG (sem conflito de ID existente)
+INSERT INTO public.cities (slug, name, state, headline, hero_image, franchisee_name, franchisee_email, franchisee_phone, status)
 VALUES
   (
-    '48d98d79-bafe-460f-9a5f-dd5dc04e85ed',
     'umuarama-pr',
     'Umuarama',
     'PR',
@@ -106,7 +95,6 @@ VALUES
     'active'
   ),
   (
-    'c1a00000-0000-0000-0000-000000000002',
     'cianorte-pr',
     'Cianorte',
     'PR',
@@ -118,7 +106,6 @@ VALUES
     'active'
   ),
   (
-    'f1a00000-0000-0000-0000-000000000003',
     'maringa-pr',
     'Maringá',
     'PR',
@@ -130,7 +117,6 @@ VALUES
     'active'
   ),
   (
-    'ca4aca55-8517-4254-87d6-9c717c38f8ba',
     'cascavel-pr',
     'Cascavel',
     'PR',
@@ -141,8 +127,7 @@ VALUES
     '5544999990011',
     'active'
   )
-ON CONFLICT (id) DO UPDATE SET
-  slug = EXCLUDED.slug,
+ON CONFLICT (slug) DO UPDATE SET
   name = EXCLUDED.name,
   state = EXCLUDED.state,
   headline = EXCLUDED.headline,

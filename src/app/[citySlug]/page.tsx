@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import { getCityBySlug, getCities } from "@/lib/supabase";
 import { CityPortal } from "@/components/CityPortal";
 
-export const revalidate = 60;
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 interface CityPageProps {
   params: Promise<{

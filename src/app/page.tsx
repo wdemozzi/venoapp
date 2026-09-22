@@ -2,7 +2,8 @@ import { cookies } from "next/headers";
 import { getCityBySlug, getCities } from "@/lib/supabase";
 import { CityPortal } from "@/components/CityPortal";
 
-export const revalidate = 60;
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export default async function Home() {
   const cookieStore = await cookies();

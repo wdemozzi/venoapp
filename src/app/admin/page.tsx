@@ -70,6 +70,7 @@ import {
   authenticateAdmin,
   updateBusinessAccessCredentials,
   updateBusinessSubscription,
+  clearCache,
 } from '@/lib/supabase';
 import defaultBannersData from '@/data/banners.json';
 
@@ -580,18 +581,31 @@ export default function AdminPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const { error } = await supabase.from('cities').upsert({
+      const payload = {
         id: city.id || DEFAULT_CITY_ID,
         slug: city.slug || 'umuarama-pr',
         name: city.name,
-        state: city.state,
+        state: city.state || 'PR',
         headline: city.headline,
         hero_image: city.hero_image,
-      });
+        franchisee_name: city.franchisee_name || '',
+        franchisee_email: city.franchisee_email || '',
+        franchisee_phone: city.franchisee_phone || '',
+        status: city.status || 'active',
+      };
+
+      const { error } = await supabase.from('cities').upsert(payload).select();
 
       if (error) {
         showToast('Erro ao salvar cidade: ' + error.message, 'error');
       } else {
+        clearCache('cities');
+        clearCache(`city:${city.slug}`);
+        await fetch('/api/revalidate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: `/${city.slug}` }),
+        }).catch(() => {});
         showToast('Configurações da cidade salvas com sucesso!');
         refreshData();
       }
@@ -616,7 +630,7 @@ export default function AdminPage() {
     try {
       if (item.id) {
         // Update
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('events')
           .update({
             title: item.title,
@@ -627,9 +641,13 @@ export default function AdminPage() {
             is_free: Boolean(item.is_free),
             ticket_url: item.ticket_url,
           })
-          .eq('id', item.id);
+          .eq('id', item.id)
+          .select();
 
         if (error) throw error;
+        if (!data || data.length === 0) {
+          throw new Error('Nenhuma linha foi alterada. Verifique se executou o script SQL no Supabase para liberar o RLS.');
+        }
         showToast('Evento atualizado com sucesso!');
       } else {
         // Insert
@@ -642,11 +660,17 @@ export default function AdminPage() {
           is_highlight: Boolean(item.is_highlight),
           is_free: Boolean(item.is_free),
           ticket_url: item.ticket_url,
-        });
+        }).select();
 
         if (error) throw error;
         showToast('Novo evento criado com sucesso!');
       }
+      clearCache('events:');
+      await fetch('/api/revalidate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: `/${city.slug}` }),
+      }).catch(() => {});
       setEventModal({ open: false, event: null });
       refreshData();
     } catch (err: unknown) {
@@ -687,7 +711,7 @@ export default function AdminPage() {
 
       if (item.id) {
         // Update
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('businesses')
           .update({
             name: item.name,
@@ -701,9 +725,13 @@ export default function AdminPage() {
             is_featured: Boolean(item.is_featured),
             is_verified: Boolean(item.is_verified),
           })
-          .eq('id', item.id);
+          .eq('id', item.id)
+          .select();
 
         if (error) throw error;
+        if (!data || data.length === 0) {
+          throw new Error('Nenhuma linha foi alterada. Verifique se executou o script SQL no Supabase para liberar o RLS.');
+        }
         showToast('Empresa atualizada com sucesso!');
       } else {
         // Insert
@@ -719,11 +747,18 @@ export default function AdminPage() {
           cover_url: item.cover_url,
           is_featured: Boolean(item.is_featured),
           is_verified: Boolean(item.is_verified),
-        });
+        }).select();
 
         if (error) throw error;
         showToast('Empresa cadastrada com sucesso!');
       }
+      clearCache('businesses:');
+      clearCache('business:');
+      await fetch('/api/revalidate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: `/${city.slug}` }),
+      }).catch(() => {});
       setBusinessModal({ open: false, business: null });
       refreshData();
     } catch (err: unknown) {
@@ -1222,10 +1257,16 @@ export default function AdminPage() {
       const res = await fetch('/api/banners', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(banners),
+        body: JSON.stringify({ banners, cityId: city.id }),
       });
-      if (!res.ok) throw new Error('Falha ao salvar banners.');
-      showToast('Configurações de banners salvas com sucesso!');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) throw new Error(data.error || 'Falha ao salvar banners.');
+      showToast('Configurações de banners salvas e sincronizadas com sucesso!');
+      await fetch('/api/revalidate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: `/${city.slug}` }),
+      }).catch(() => {});
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro ao salvar banners';
       showToast(msg, 'error');

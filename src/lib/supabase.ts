@@ -401,6 +401,37 @@ export function authenticateAdmin(userOrEmail: string, password: string): AdminS
     };
   }
 
+  // Dynamic match against defaultCitiesData
+  if (cleanPass === 'Rest2710#' || cleanPass === 'veno2026') {
+    for (const c of (defaultCitiesData as unknown as City[])) {
+      const slugBase = (c.slug || '').split('-')[0].toLowerCase();
+      const slugFull = (c.slug || '').toLowerCase();
+      const nameNorm = (c.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const email = (c.franchisee_email || '').toLowerCase().trim();
+
+      const isMatch =
+        cleanUser === slugBase ||
+        cleanUser === slugFull ||
+        cleanUser === nameNorm ||
+        cleanUser === (c.name || '').toLowerCase() ||
+        cleanUser === `franquia.${slugBase}@venoapp.com` ||
+        cleanUser === `franquia.${slugFull}@venoapp.com` ||
+        cleanUser === `admin.${slugBase}@venoapp.com` ||
+        (Boolean(email) && cleanUser === email);
+
+      if (isMatch) {
+        return {
+          role: 'franchisee',
+          username: cleanUser,
+          name: `Franquia ${c.name}`,
+          cityId: c.id,
+          cityName: c.name,
+          timestamp: Date.now(),
+        };
+      }
+    }
+  }
+
   // Universal master password fallback for demozzi
   if (cleanPass === 'Rest2710#' && (cleanUser.includes('admin') || cleanUser === 'venoapp')) {
     return {

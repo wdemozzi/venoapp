@@ -78,13 +78,6 @@ export default async function AlbumDetailPage({ params }: PageProps) {
             <span className="font-bold text-slate-800">venoapp</span>
             <span>•</span>
             <span>{cityName} - PR</span>
-            <span>•</span>
-            <Link
-              href="/admin"
-              className="text-[#7b2dc7] hover:text-[#5e229c] hover:underline font-semibold transition"
-            >
-              Painel Admin
-            </Link>
           </div>
           <p>© {new Date().getFullYear()} Venoapp. Todos os direitos reservados.</p>
         </div>

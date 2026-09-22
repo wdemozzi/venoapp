@@ -87,10 +87,18 @@ function AnunciarContent() {
     loadCities();
   }, [searchParams]);
 
-  // Load plans from Supabase
+  // Load plans from API / Supabase in real-time
   useEffect(() => {
     async function load() {
       try {
+        const res = await fetch('/api/plans', { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setPlans(data);
+            return;
+          }
+        }
         const data = await getPlans();
         if (data && data.length > 0) {
           setPlans(data);

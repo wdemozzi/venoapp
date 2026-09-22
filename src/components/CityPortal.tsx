@@ -103,13 +103,6 @@ export async function CityPortal({ city, allCities }: CityPortalProps) {
             >
               Área do Comerciante
             </Link>
-            <span>•</span>
-            <Link
-              href="/admin"
-              className="text-slate-500 hover:text-slate-700 hover:underline font-medium transition"
-            >
-              Painel Admin
-            </Link>
           </div>
           <p>© {new Date().getFullYear()} Venoapp {cityName}. Todos os direitos reservados.</p>
         </div>

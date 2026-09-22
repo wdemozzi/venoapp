@@ -3,7 +3,8 @@ import { cookies } from 'next/headers';
 import { getCityBySlug, getCities, getBusinessesByCity, City } from '@/lib/supabase';
 import { EmpresasDirectoryView } from './EmpresasDirectoryView';
 
-export const revalidate = 30;
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 interface PageProps {
   searchParams: Promise<{ cidade?: string }>;

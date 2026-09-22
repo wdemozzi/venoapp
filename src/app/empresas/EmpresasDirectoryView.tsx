@@ -470,13 +470,6 @@ export function EmpresasDirectoryView({
             >
               Área do Comerciante
             </Link>
-            <span>•</span>
-            <Link
-              href="/admin"
-              className="text-slate-500 hover:text-slate-700 hover:underline font-medium transition"
-            >
-              Painel Admin
-            </Link>
           </div>
           <p>© {new Date().getFullYear()} Venoapp {city.name}. Todos os direitos reservados.</p>
         </div>

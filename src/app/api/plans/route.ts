@@ -1,37 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-import { supabase, isSupabaseConfigured, Plan, DEFAULT_PLANS } from '@/lib/supabase';
+import { revalidatePath } from 'next/cache';
+import crypto from 'crypto';
+import { supabase, isSupabaseConfigured, Plan, DEFAULT_PLANS, clearCache } from '@/lib/supabase';
 import initialPlans from '@/data/plans.json';
 
-const plansFilePath = path.join(process.cwd(), 'src', 'data', 'plans.json');
+export const dynamic = 'force-dynamic';
 
-function getLocalPlans(): Plan[] {
-  try {
-    if (fs.existsSync(plansFilePath)) {
-      const raw = fs.readFileSync(plansFilePath, 'utf-8');
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+async function fetchAllPlans(): Promise<Plan[]> {
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('plans')
+        .select('*')
+        .order('order_index', { ascending: true });
+
+      if (!error && data && data.length > 0) {
+        return data as Plan[];
+      }
+    } catch (err) {
+      console.warn('[API /api/plans] Falha ao consultar Supabase:', err);
     }
-  } catch (err) {
-    console.error('Erro ao ler plans.json:', err);
   }
   return initialPlans as unknown as Plan[];
 }
 
-function saveLocalPlans(plans: Plan[]): boolean {
-  try {
-    fs.writeFileSync(plansFilePath, JSON.stringify(plans, null, 2), 'utf-8');
-    return true;
-  } catch (err) {
-    console.error('Erro ao salvar plans.json:', err);
-    return false;
-  }
-}
-
 export async function GET() {
-  const local = getLocalPlans();
-  return NextResponse.json(local);
+  const plans = await fetchAllPlans();
+  return NextResponse.json(plans);
 }
 
 export async function POST(req: NextRequest) {
@@ -41,28 +36,39 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Dados inválidos.' }, { status: 400 });
     }
 
-    const localPlans = getLocalPlans();
-
     // Handle delete action
     if (body.action === 'delete' && body.id) {
-      const updated = localPlans.filter((p) => p.id !== body.id);
-      saveLocalPlans(updated);
       if (isSupabaseConfigured) {
-        try {
-          await supabase.from('plans').delete().eq('id', body.id);
-        } catch {}
+        const { error } = await supabase.from('plans').delete().eq('id', body.id);
+        if (error) {
+          return NextResponse.json({ error: 'Erro ao excluir plano: ' + error.message }, { status: 500 });
+        }
       }
-      return NextResponse.json({ success: true, plans: updated });
+
+      clearCache('plans:');
+      try {
+        revalidatePath('/anunciar', 'layout');
+        revalidatePath('/', 'layout');
+        revalidatePath('/[citySlug]', 'layout');
+      } catch {}
+
+      const updatedPlans = await fetchAllPlans();
+      return NextResponse.json({ success: true, plans: updatedPlans });
     }
 
     if (!body.name) {
       return NextResponse.json({ error: 'Nome do plano é obrigatório.' }, { status: 400 });
     }
 
-    const planId = body.id || ('plan-' + Date.now());
+    // Ensure valid UUID for id if generating a new one
+    let planId = body.id;
+    if (!planId || planId.startsWith('plan-')) {
+      planId = crypto.randomUUID();
+    }
+
     const slug = body.slug || body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     const price = Number(body.price_monthly || 0);
-    const orderIndex = Number(body.order_index || (localPlans.length + 1));
+    const orderIndex = Number(body.order_index || 1);
     const isPopular = Boolean(body.is_popular);
     const features: string[] = Array.isArray(body.features)
       ? body.features
@@ -80,22 +86,10 @@ export async function POST(req: NextRequest) {
       order_index: orderIndex,
     };
 
-    const existingIdx = localPlans.findIndex((p) => p.id === planId);
-    let updatedPlans: Plan[] = [];
-    if (existingIdx >= 0) {
-      updatedPlans = [...localPlans];
-      updatedPlans[existingIdx] = planData;
-    } else {
-      updatedPlans = [...localPlans, planData];
-    }
-
-    // Sort by order_index
-    updatedPlans.sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
-    saveLocalPlans(updatedPlans);
-
     if (isSupabaseConfigured) {
-      try {
-        await supabase.from('plans').upsert({
+      const { data, error } = await supabase
+        .from('plans')
+        .upsert({
           id: planData.id,
           name: planData.name,
           slug: planData.slug,
@@ -103,12 +97,29 @@ export async function POST(req: NextRequest) {
           features: planData.features,
           is_popular: planData.is_popular,
           order_index: planData.order_index,
-        });
-      } catch (err) {
-        console.warn('Erro ao sincronizar plano no Supabase:', err);
+        })
+        .select();
+
+      if (error) {
+        console.error('[API /api/plans] Erro no upsert Supabase:', error);
+        return NextResponse.json(
+          { error: `Erro no Supabase ao salvar plano: ${error.message}. Certifique-se de executar o script SQL para liberar permissões RLS.` },
+          { status: 500 }
+        );
+      }
+      if (data && data[0]) {
+        planData.id = data[0].id;
       }
     }
 
+    clearCache('plans:');
+    try {
+      revalidatePath('/anunciar', 'layout');
+      revalidatePath('/', 'layout');
+      revalidatePath('/[citySlug]', 'layout');
+    } catch {}
+
+    const updatedPlans = await fetchAllPlans();
     return NextResponse.json({ success: true, plan: planData, plans: updatedPlans });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Erro interno ao salvar plano';

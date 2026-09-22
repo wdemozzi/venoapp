@@ -285,19 +285,10 @@ export const Navbar: React.FC<NavbarProps> = ({ currentCity, allCities = [] }) =
           <Link
             href="/portal-parceiro"
             title="Portal do Parceiro (Área do Anunciante)"
-            className="hidden lg:flex items-center gap-1.5 text-xs font-semibold bg-white/10 hover:bg-white/20 border border-white/15 text-purple-200 hover:text-white px-3 py-2 rounded-xl transition"
+            className="flex items-center gap-1.5 text-xs font-semibold bg-white/10 hover:bg-white/20 border border-white/15 text-purple-200 hover:text-white px-3 py-2 rounded-xl transition"
           >
             <Store className="w-3.5 h-3.5 text-purple-300" />
             <span>Área do Parceiro</span>
-          </Link>
-
-          <Link
-            href="/admin"
-            title="Painel Administrativo"
-            aria-label="Painel Administrativo"
-            className="w-9 h-9 rounded-full bg-[#7526bb] hover:bg-[#8532d1] flex items-center justify-center text-white transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-300 cursor-pointer"
-          >
-            <User className="w-4 h-4" />
           </Link>
         </div>
       </div>

@@ -1,71 +1,63 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-import { supabase, isSupabaseConfigured, BannersConfig, CityBanner } from '@/lib/supabase';
+import { revalidatePath } from 'next/cache';
+import { supabase, isSupabaseConfigured, BannersConfig, CityBanner, clearCache } from '@/lib/supabase';
 import defaultBannersData from '@/data/banners.json';
+import defaultCitiesData from '@/data/cities.json';
 
-const filePath = path.join(process.cwd(), 'src', 'data', 'banners.json');
+export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const cityParam = searchParams.get('cityId') || searchParams.get('city');
 
-    let result: BannersConfig = defaultBannersData;
+    let result: BannersConfig = defaultBannersData as unknown as BannersConfig;
 
     // 1. Try reading from Supabase if table exists
     if (isSupabaseConfigured) {
-      const { data, error } = await supabase
+      let query = supabase
         .from('city_banners')
         .select('*')
         .order('order_index', { ascending: true });
 
+      if (cityParam) {
+        query = query.or(`city_id.eq.${cityParam},city_id.is.null`);
+      }
+
+      const { data, error } = await query;
+
       if (!error && data && data.length > 0) {
         const rows = data as CityBanner[];
-        const top = rows.find((r) => r.position === 'sidebar_top') || defaultBannersData.sidebar_top;
-        const bottom = rows.find((r) => r.position === 'sidebar_bottom') || defaultBannersData.sidebar_bottom;
-        const hero = rows.find((r) => r.position === 'hero') || defaultBannersData.hero;
+        const top = rows.find((r) => r.position === 'sidebar_top') || (defaultBannersData as unknown as BannersConfig).sidebar_top;
+        const bottom = rows.find((r) => r.position === 'sidebar_bottom') || (defaultBannersData as unknown as BannersConfig).sidebar_bottom;
+        const hero = rows.find((r) => r.position === 'hero') || (defaultBannersData as unknown as BannersConfig).hero;
         const ads = rows.filter((r) => r.position === 'sidebar_ad');
 
         result = {
           sidebar_top: top,
           sidebar_bottom: bottom,
           hero,
-          sidebar_ads: ads.length > 0 ? ads : defaultBannersData.sidebar_ads,
+          sidebar_ads: ads.length > 0 ? ads : (defaultBannersData as unknown as BannersConfig).sidebar_ads,
         };
-      } else if (fs.existsSync(filePath)) {
-        try {
-          result = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-        } catch {}
       }
-    } else if (fs.existsSync(filePath)) {
-      try {
-        result = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-      } catch {}
     }
 
-    // Se houver parâmetro de cidade, adapta o banner de amor com a imagem da cidade
-    if (cityParam) {
-      const citiesPath = path.join(process.cwd(), 'src', 'data', 'cities.json');
-      if (fs.existsSync(citiesPath)) {
-        try {
-          const citiesList = JSON.parse(fs.readFileSync(citiesPath, 'utf-8'));
-          const matched = citiesList.find(
-            (c: { id: string; slug: string; name: string; hero_image?: string }) =>
-              c.id === cityParam || c.slug === cityParam
-          );
-          if (matched) {
-            result = {
-              ...result,
-              sidebar_bottom: {
-                ...result.sidebar_bottom,
-                title: `Eu Amo ${matched.name}`,
-                subtitle: `Orgulho de viver em ${matched.name}. Encontre as melhores empresas e serviços locais.`,
-                image_url: matched.hero_image || result.sidebar_bottom.image_url,
-              },
-            };
-          }
-        } catch {}
+    // Se houver parâmetro de cidade, adapta o banner de amor com a imagem da cidade se necessário
+    if (cityParam && result.sidebar_bottom.title.includes('Umuarama')) {
+      const citiesList = defaultCitiesData;
+      const matched = citiesList.find(
+        (c) => c.id === cityParam || c.slug === cityParam
+      );
+      if (matched && matched.name !== 'Umuarama') {
+        result = {
+          ...result,
+          sidebar_bottom: {
+            ...result.sidebar_bottom,
+            title: `Eu Amo ${matched.name}`,
+            subtitle: `Orgulho de viver em ${matched.name}. Encontre as melhores empresas e serviços locais.`,
+            image_url: matched.hero_image || result.sidebar_bottom.image_url,
+          },
+        };
       }
     }
 
@@ -78,65 +70,75 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const body: BannersConfig = await req.json();
+    const body = await req.json();
+    const banners: BannersConfig = body.banners || body;
+    const cityId = body.cityId || null;
 
-    // 1. Persist to local JSON file
-    fs.writeFileSync(filePath, JSON.stringify(body, null, 2), 'utf-8');
-
-    // 2. Try syncing with Supabase city_banners if table exists
     if (isSupabaseConfigured) {
-      try {
-        const rowsToUpsert: Partial<CityBanner>[] = [
-          {
-            id: body.sidebar_top.id || 'banner-sidebar-top',
-            position: 'sidebar_top',
-            title: body.sidebar_top.title,
-            subtitle: body.sidebar_top.subtitle,
-            button_text: body.sidebar_top.button_text,
-            link_url: body.sidebar_top.link_url,
-            image_url: body.sidebar_top.image_url,
-            is_active: body.sidebar_top.is_active,
-          },
-          {
-            id: body.sidebar_bottom.id || 'banner-sidebar-bottom',
-            position: 'sidebar_bottom',
-            title: body.sidebar_bottom.title,
-            subtitle: body.sidebar_bottom.subtitle,
-            link_url: body.sidebar_bottom.link_url,
-            image_url: body.sidebar_bottom.image_url,
-            is_active: body.sidebar_bottom.is_active,
-          },
-          {
-            id: body.hero.id || 'banner-hero',
-            position: 'hero',
-            title: body.hero.title,
-            subtitle: body.hero.subtitle,
-            tagline: body.hero.tagline,
-            image_url: body.hero.image_url,
-            decorative_text: body.hero.decorative_text,
-            is_active: body.hero.is_active,
-          },
-          ...(body.sidebar_ads || []).map((ad, idx) => ({
-            id: ad.id || `ad-${idx + 1}`,
-            position: 'sidebar_ad',
-            title: ad.title,
-            subtitle: ad.subtitle,
-            button_text: ad.button_text,
-            link_url: ad.link_url,
-            image_url: ad.image_url,
-            is_active: ad.is_active,
-            order_index: idx + 1,
-          })),
-        ];
+      const rowsToUpsert: Partial<CityBanner>[] = [
+        {
+          id: banners.sidebar_top.id || (cityId ? `banner-sidebar-top-${cityId}` : 'banner-sidebar-top'),
+          city_id: cityId,
+          position: 'sidebar_top',
+          title: banners.sidebar_top.title,
+          subtitle: banners.sidebar_top.subtitle,
+          button_text: banners.sidebar_top.button_text,
+          link_url: banners.sidebar_top.link_url,
+          image_url: banners.sidebar_top.image_url,
+          is_active: banners.sidebar_top.is_active,
+        },
+        {
+          id: banners.sidebar_bottom.id || (cityId ? `banner-sidebar-bottom-${cityId}` : 'banner-sidebar-bottom'),
+          city_id: cityId,
+          position: 'sidebar_bottom',
+          title: banners.sidebar_bottom.title,
+          subtitle: banners.sidebar_bottom.subtitle,
+          link_url: banners.sidebar_bottom.link_url,
+          image_url: banners.sidebar_bottom.image_url,
+          is_active: banners.sidebar_bottom.is_active,
+        },
+        {
+          id: banners.hero.id || (cityId ? `banner-hero-${cityId}` : 'banner-hero'),
+          city_id: cityId,
+          position: 'hero',
+          title: banners.hero.title,
+          subtitle: banners.hero.subtitle,
+          tagline: banners.hero.tagline,
+          image_url: banners.hero.image_url,
+          decorative_text: banners.hero.decorative_text,
+          is_active: banners.hero.is_active,
+        },
+        ...(banners.sidebar_ads || []).map((ad, idx) => ({
+          id: ad.id || (cityId ? `ad-${cityId}-${idx + 1}` : `ad-${idx + 1}`),
+          city_id: cityId,
+          position: 'sidebar_ad',
+          title: ad.title,
+          subtitle: ad.subtitle,
+          button_text: ad.button_text,
+          link_url: ad.link_url,
+          image_url: ad.image_url,
+          is_active: ad.is_active,
+          order_index: idx + 1,
+        })),
+      ];
 
-        await supabase.from('city_banners').upsert(rowsToUpsert);
-      } catch (sbErr) {
-        // If table doesn't exist yet, it's fine since local JSON was saved successfully
-        console.info('[API /api/banners] Supabase city_banners not configured or error:', sbErr);
+      const { error } = await supabase.from('city_banners').upsert(rowsToUpsert).select();
+      if (error) {
+        console.error('[API /api/banners] Erro ao salvar city_banners no Supabase:', error);
+        return NextResponse.json(
+          { error: `Erro no Supabase: ${error.message}. Certifique-se de executar o script SQL no Supabase para criar a tabela city_banners.` },
+          { status: 500 }
+        );
       }
     }
 
-    return NextResponse.json({ success: true, banners: body });
+    clearCache('banners:');
+    try {
+      revalidatePath('/', 'layout');
+      revalidatePath('/[citySlug]', 'layout');
+    } catch {}
+
+    return NextResponse.json({ success: true, banners });
   } catch (err: unknown) {
     console.error('[API /api/banners] Erro ao salvar banners:', err);
     return NextResponse.json(

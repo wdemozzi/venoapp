@@ -1,9 +1,23 @@
 -- ==============================================================================
--- VENOAPP - SCRIPT MASTER DE CONFIGURAÇÃO DO SUPABASE
+-- VENOAPP - SCRIPT MASTER DE CONFIGURAÇÃO DO SUPABASE (ATUALIZADO)
 -- Execute este script no SQL Editor do seu painel Supabase (https://supabase.com/dashboard)
 -- ==============================================================================
 
--- 1. DESATIVAR RLS (Row-Level Security) NAS TABELAS PRINCIPAIS
+-- 1. ADICIONAR COLUNAS QUE FALTAVAM NA TABELA DE CIDADES (cities)
+ALTER TABLE IF EXISTS public.cities ADD COLUMN IF NOT EXISTS headline TEXT DEFAULT 'Tudo o que acontece na sua cidade.';
+ALTER TABLE IF EXISTS public.cities ADD COLUMN IF NOT EXISTS hero_image TEXT DEFAULT '/assets/hero-new-full.jpg';
+ALTER TABLE IF EXISTS public.cities ADD COLUMN IF NOT EXISTS franchisee_name TEXT DEFAULT '';
+ALTER TABLE IF EXISTS public.cities ADD COLUMN IF NOT EXISTS franchisee_email TEXT DEFAULT '';
+ALTER TABLE IF EXISTS public.cities ADD COLUMN IF NOT EXISTS franchisee_phone TEXT DEFAULT '';
+ALTER TABLE IF EXISTS public.cities ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+
+-- 2. ADICIONAR COLUNAS EM OFFERS E BUSINESSES SE FALTAR
+ALTER TABLE IF EXISTS public.offers ADD COLUMN IF NOT EXISTS image_url TEXT;
+ALTER TABLE IF EXISTS public.businesses ADD COLUMN IF NOT EXISTS subscription_price NUMERIC;
+ALTER TABLE IF EXISTS public.businesses ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMPTZ;
+ALTER TABLE IF EXISTS public.businesses ADD COLUMN IF NOT EXISTS contact_name TEXT;
+
+-- 3. DESATIVAR RLS (Row-Level Security) NAS TABELAS PRINCIPAIS
 -- Isso permite que o painel administrativo (superadmin e franqueados) consiga
 -- inserir, editar e excluir registros sem bloqueio de permissão 42501.
 ALTER TABLE IF EXISTS public.plans DISABLE ROW LEVEL SECURITY;
@@ -15,7 +29,26 @@ ALTER TABLE IF EXISTS public.city_shortcuts DISABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.event_albums DISABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.event_photos DISABLE ROW LEVEL SECURITY;
 
--- 2. CRIAR POLÍTICAS PERMISSIVAS CASO O RLS SEJA REATIVADO NO FUTURO
+-- 4. CRIAR TABELA DE BANNERS DA CIDADE (city_banners) SE NÃO EXISTIR
+CREATE TABLE IF NOT EXISTS public.city_banners (
+  id TEXT PRIMARY KEY,
+  city_id UUID,
+  position TEXT NOT NULL,
+  title TEXT NOT NULL,
+  subtitle TEXT,
+  tagline TEXT,
+  button_text TEXT,
+  link_url TEXT,
+  image_url TEXT,
+  background_image TEXT,
+  decorative_text TEXT,
+  is_active BOOLEAN DEFAULT true,
+  order_index INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE public.city_banners DISABLE ROW LEVEL SECURITY;
+
+-- 5. CRIAR POLÍTICAS PERMISSIVAS CASO O RLS SEJA REATIVADO NO FUTURO
 DO $$
 BEGIN
   -- plans
@@ -42,6 +75,10 @@ BEGIN
   DROP POLICY IF EXISTS "Public access city_shortcuts" ON public.city_shortcuts;
   CREATE POLICY "Public access city_shortcuts" ON public.city_shortcuts FOR ALL USING (true) WITH CHECK (true);
 
+  -- city_banners
+  DROP POLICY IF EXISTS "Public access city_banners" ON public.city_banners;
+  CREATE POLICY "Public access city_banners" ON public.city_banners FOR ALL USING (true) WITH CHECK (true);
+
   -- event_albums
   DROP POLICY IF EXISTS "Public access event_albums" ON public.event_albums;
   CREATE POLICY "Public access event_albums" ON public.event_albums FOR ALL USING (true) WITH CHECK (true);
@@ -53,50 +90,7 @@ EXCEPTION WHEN OTHERS THEN
   NULL;
 END $$;
 
--- 3. GARANTIR A ESTRUTURA DA TABELA DE CIDADES (cities)
-CREATE TABLE IF NOT EXISTS public.cities (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  slug TEXT UNIQUE NOT NULL,
-  name TEXT NOT NULL,
-  state TEXT DEFAULT 'PR',
-  headline TEXT DEFAULT 'Tudo o que acontece na sua cidade.',
-  hero_image TEXT DEFAULT '/assets/hero-new-full.jpg',
-  franchisee_name TEXT DEFAULT '',
-  franchisee_email TEXT DEFAULT '',
-  franchisee_phone TEXT DEFAULT '',
-  status TEXT DEFAULT 'active',
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE public.cities DISABLE ROW LEVEL SECURITY;
-
--- 4. CRIAR TABELA DE BANNERS DA CIDADE (city_banners) SE NÃO EXISTIR
-CREATE TABLE IF NOT EXISTS public.city_banners (
-  id TEXT PRIMARY KEY,
-  city_id UUID,
-  position TEXT NOT NULL,
-  title TEXT NOT NULL,
-  subtitle TEXT,
-  tagline TEXT,
-  button_text TEXT,
-  link_url TEXT,
-  image_url TEXT,
-  background_image TEXT,
-  decorative_text TEXT,
-  is_active BOOLEAN DEFAULT true,
-  order_index INTEGER DEFAULT 0,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE public.city_banners DISABLE ROW LEVEL SECURITY;
-
-DO $$
-BEGIN
-  DROP POLICY IF EXISTS "Public access city_banners" ON public.city_banners;
-  CREATE POLICY "Public access city_banners" ON public.city_banners FOR ALL USING (true) WITH CHECK (true);
-EXCEPTION WHEN OTHERS THEN
-  NULL;
-END $$;
-
--- 5. POPULAR AS CIDADES INICIAIS (se ainda não existirem)
+-- 6. POPULAR OU ATUALIZAR AS CIDADES INICIAIS
 INSERT INTO public.cities (id, slug, name, state, headline, hero_image, franchisee_name, franchisee_email, franchisee_phone, status)
 VALUES
   (
@@ -155,9 +149,10 @@ ON CONFLICT (id) DO UPDATE SET
   hero_image = EXCLUDED.hero_image,
   franchisee_name = EXCLUDED.franchisee_name,
   franchisee_email = EXCLUDED.franchisee_email,
-  franchisee_phone = EXCLUDED.franchisee_phone;
+  franchisee_phone = EXCLUDED.franchisee_phone,
+  status = EXCLUDED.status;
 
--- 6. POPULAR BANNERS INICIAIS NA TABELA city_banners
+-- 7. POPULAR BANNERS INICIAIS NA TABELA city_banners
 INSERT INTO public.city_banners (id, position, title, subtitle, tagline, button_text, link_url, image_url, is_active, order_index)
 VALUES
   (
